@@ -320,11 +320,8 @@ async function loadOverdue() {
   S.overdueIds=new Set((Array.isArray(d)?d:[]).map(r=>r.id_cliente));
 }
 async function loadToday() {
-  const today=new Date().toISOString().split('T')[0];
-  let params=`select=id,tipo,nome_cliente,texto&resolvido=eq.false&data_prevista=eq.${today}&order=nome_cliente.asc`;
-  if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
-  const d=await sbQ('atac_crm_notas',params);
-  renderToday(Array.isArray(d)?d:[]);
+  // Recarrega alertas CRM (substituiu today panel)
+  renderAlertasCRM();
 }
 async function loadDetalhe(id) {
   const [notas,tels,peds]=await Promise.all([
@@ -383,26 +380,32 @@ function gotoTab(tab) {
   // CRM usa classe diferente
   const crmEl=document.getElementById('pg-crm');
   if(crmEl){ crmEl.classList.toggle('active',tab==='crm'); }
-  // Filtros: no CRM mostrar só vendedor; em config ocultar tudo; demais mostrar tudo
-  const tfAll = ['f-period','f-start','f-end','f-sep','f-emp'];
-  const tfVend = document.getElementById('f-vend');
-  const tfVendLbl = document.querySelector('[data-tf="vend"]');
+  // Filtros: no CRM só vendedor; config oculta tudo; resto mostra tudo
   const tf = document.getElementById('topbar-filters');
   if (tab === 'config') {
     if(tf) tf.style.display = 'none';
   } else if (tab === 'crm') {
     if(tf) tf.style.display = 'flex';
-    tfAll.forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
-    document.querySelectorAll('.tf-label').forEach(el => { el.style.display = el.textContent.includes('Vendedor') ? '' : 'none'; });
-    if(tfVend) tfVend.style.display = '';
+    // ocultar tudo exceto vendedor
+    ['f-period','f-start','f-end','f-sep','f-emp'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.style.display = 'none';
+    });
+    // ocultar labels que NÃO são do vendedor
+    document.querySelectorAll('.tf-label').forEach(el => {
+      el.style.display = el.dataset.tf === 'vend' ? '' : 'none';
+    });
+    const fv = document.getElementById('f-vend');
+    if(fv) fv.style.display = '';
   } else {
     if(tf) tf.style.display = 'flex';
-    tfAll.forEach(id => { const el=document.getElementById(id); if(el) el.style.display=''; });
+    ['f-period','f-start','f-end','f-emp','f-vend'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.style.display = '';
+    });
     document.querySelectorAll('.tf-label').forEach(el => el.style.display = '');
-    if(tfVend) tfVend.style.display = '';
-    // Reexibir custom date se necessário
     if(F.period === 'custom') {
-      ['f-start','f-end','f-sep'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=''; });
+      ['f-start','f-end','f-sep'].forEach(id => {
+        const el = document.getElementById(id); if(el) el.style.display = '';
+      });
     }
   }
   if(tab==='home')renderHome();
@@ -565,22 +568,71 @@ function toggleVend(id){S.expandVend=S.expandVend===id?null:id;renderVendedores(
 // ══════════════════════════════════════════════════════════
 function renderCRM() {
   renderUmbler();
-  renderToday_if_empty();
+  renderAlertasCRM();
   renderLista();
 }
-function renderToday_if_empty(){const el=document.getElementById('today-wrap');if(el&&!el.innerHTML.trim())loadToday();}
 
-function renderToday(tasks) {
-  const el=document.getElementById('today-wrap');if(!el)return;
-  if(!tasks.length){el.innerHTML='';return;}
-  el.innerHTML=`<div class="today-box">
-    <div class="today-ttl">📋 Atividades de Hoje (${tasks.length})</div>
-    ${tasks.map(t=>`<div class="today-item">
-      <div class="today-left">${tipoBdg(t.tipo)}<span class="today-nome">${t.nome_cliente}</span></div>
-      <button class="btn-res" onclick="resolverNota('${t.id}',true)">✓</button>
-    </div>`).join('')}
-  </div>`;
+// Alertas inteligentes: hoje, atrasadas, próximas (substitui painel "atividades de hoje")
+async function renderAlertasCRM() {
+  const el = document.getElementById('crm-alertas'); if(!el)return;
+  const hoje = new Date().toISOString().split('T')[0];
+  const proxData = new Date(); proxData.setDate(proxData.getDate()+7);
+  const proxStr = proxData.toISOString().split('T')[0];
+
+  let base = 'select=id,tipo,nome_cliente,texto,data_prevista&resolvido=eq.false';
+  if (F.vendedorId) base += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+
+  const [atrasadas, deHoje, proximas] = await Promise.all([
+    sbQ('atac_crm_notas', base + `&data_prevista=lt.${hoje}&order=data_prevista.asc&limit=50`),
+    sbQ('atac_crm_notas', base + `&data_prevista=eq.${hoje}&order=nome_cliente.asc`),
+    sbQ('atac_crm_notas', base + `&data_prevista=gt.${hoje}&data_prevista=lte.${proxStr}&order=data_prevista.asc&limit=20`),
+  ]);
+
+  const nAtr = Array.isArray(atrasadas) ? atrasadas.length : 0;
+  const nHoje = Array.isArray(deHoje) ? deHoje.length : 0;
+  const nProx = Array.isArray(proximas) ? proximas.length : 0;
+
+  if (!nAtr && !nHoje && !nProx) { el.innerHTML=''; return; }
+
+  // Renderiza alertas como chips clicáveis no topo
+  el.innerHTML = `
+    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--border)">
+
+      ${nHoje>0?`
+      <div style="background:var(--blue-pale);border:1px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:8px 12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--blue-dark)">📌 Atividades de Hoje (${nHoje})</span>
+        </div>
+        ${(Array.isArray(deHoje)?deHoje:[]).map(t=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-radius:var(--radius-sm);padding:5px 8px;margin-bottom:3px;gap:6px">
+            <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1">
+              ${tipoBdg(t.tipo)}
+              <span style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.nome_cliente}</span>
+            </div>
+            <button onclick="resolverNota('${t.id}',true)" class="btn-res" style="flex-shrink:0;font-size:10px">✓ Resolver</button>
+          </div>`).join('')}
+      </div>`:''}
+
+      ${nAtr>0?`
+      <div style="background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:8px 12px;cursor:pointer" onclick="setMainTab('agenda')" title="Ver agenda">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:15px">⚠️</span>
+          <span style="font-size:12px;font-weight:700;color:var(--red)">${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--red);font-weight:600">Ver agenda →</span>
+        </div>
+      </div>`:''}
+
+      ${nProx>0&&!nHoje?`
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 12px">
+        <span style="font-size:11px;color:var(--text-muted)">📅 Próximas atividades nos próximos 7 dias: </span>
+        <span style="font-size:11px;font-weight:700;color:var(--orange)">${nProx}</span>
+      </div>`:''}
+
+    </div>`;
 }
+
+// Mantido para compatibilidade com resolverNota (hoje flag)
+function renderToday(tasks) {}
 
 function renderUmbler() {
   const el=document.getElementById('umbl-wrap');if(!el)return;
@@ -997,10 +1049,13 @@ async function delUV(id){
 // ══════════════════════════════════════════════════════════
 async function resolverNota(id,isToday){
   await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
-  toast('Resolvido!');
-  await Promise.all([loadToday(),loadOverdue()]);
+  toast('✅ Resolvido!');
+  // Recarregar alertas e overdues
+  await Promise.all([loadOverdue(), renderAlertasCRM()]);
   if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
   renderLista();
+  // Se agenda está aberta, recarregar
+  if(S.mainTab==='agenda') renderAgendaCRM();
 }
 async function salvarNota(cId,cNome,vId,vNome){
   const tipo=document.getElementById('nota-tipo')?.value;
@@ -1370,18 +1425,11 @@ async function renderAgendaCRM() {
   const el = document.getElementById('crm-agenda-panel'); if(!el)return;
   el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>';
 
-  // OBRIGATÓRIO ter vendedor selecionado ou ser admin
-  if (!F.vendedorId) {
-    el.innerHTML = `<div style="padding:24px;text-align:center">
-      <div style="font-size:32px;margin-bottom:12px">👤</div>
-      <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px">Selecione um Vendedor</p>
-      <p style="font-size:12px;color:var(--text-muted)">Use o filtro de vendedor na barra superior para ver a agenda</p>
-    </div>`;
-    return;
-  }
-
   let params = 'select=id,tipo,nome_cliente,texto,data_prevista,criado_por,nome_vendedor_responsavel,resolvido&resolvido=eq.false&order=data_prevista.asc.nullslast';
-  params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  if (F.vendedorId) {
+    params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  }
+  // Sem filtro = admin vê todos
   const tarefas = await sbQ('atac_crm_notas', params);
 
   // Separar por período
@@ -1434,19 +1482,24 @@ async function renderAgendaCRM() {
     </div>`;
   };
 
+  const vendNome = F.vendedorId ? sN(S.vendedores.find(v=>v.id_vendedor===F.vendedorId)?.nome_vendedor||'') : 'Todos';
   el.innerHTML = `<div style="height:100%;overflow-y:auto;padding:16px 20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div>
-        <h2 style="font-size:16px;font-weight:700;color:var(--text-primary)">📋 Agenda de Atividades</h2>
-        <p style="font-size:12px;color:var(--text-muted);margin-top:2px">
-          ${F.vendedorId ? `Vendedor: ${sN(S.vendedores.find(v=>v.id_vendedor===F.vendedorId)?.nome_vendedor||'')}` : 'Todos os vendedores'}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button onclick="setMainTab('carteira')"
+        style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue-mid);background:var(--blue-pale);border:1.5px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:6px 12px;cursor:pointer;transition:all .15s"
+        onmouseover="this.style.background='var(--blue-dark)';this.style.color='#fff'"
+        onmouseout="this.style.background='var(--blue-pale)';this.style.color='var(--blue-mid)'">
+        ← Voltar ao CRM
+      </button>
+      <div style="flex:1">
+        <h2 style="font-size:15px;font-weight:700;color:var(--text-primary)">📋 Agenda — ${vendNome}</h2>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:1px">
+          ${!F.vendedorId?'Filtre por vendedor na topbar para ver agenda individual':''}
         </p>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div style="display:flex;gap:6px;font-size:11px">
-          ${vencidas.length?`<span style="background:var(--red-bg);color:var(--red);padding:3px 8px;border-radius:20px;font-weight:700">⚠ ${vencidas.length} vencidas</span>`:''}
-          ${paraHoje.length?`<span style="background:var(--blue-pale);color:var(--blue-dark);padding:3px 8px;border-radius:20px;font-weight:700">📌 ${paraHoje.length} hoje</span>`:''}
-        </div>
+      <div style="display:flex;gap:6px;font-size:11px">
+        ${vencidas.length?`<span style="background:var(--red-bg);color:var(--red);padding:3px 8px;border-radius:20px;font-weight:700">⚠ ${vencidas.length}</span>`:''}
+        ${paraHoje.length?`<span style="background:var(--blue-pale);color:var(--blue-dark);padding:3px 8px;border-radius:20px;font-weight:700">📌 ${paraHoje.length}</span>`:''}
       </div>
     </div>
     ${renderGrupo('⚠ Vencidas', vencidas, 'var(--red)')}
