@@ -714,6 +714,57 @@ input,select,textarea { width:100%; }
   </div>
 </div>
 
+<!-- MODAL: Nova Atividade (agenda) -->
+<div id="modal-nova-ativ" class="modal-ov">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3>Nova Atividade</h3>
+      <button class="btn-mc" onclick="fecharNovaAtividade()">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
+      <div class="row2">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Tipo</label>
+          <select id="na-tipo" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%">
+            <option value="TAREFA">Tarefa</option>
+            <option value="FOLLOWUP">Follow-up</option>
+            <option value="LIGACAO">Ligação</option>
+            <option value="OBSERVACAO">Observação</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Data</label>
+          <input id="na-data" type="date" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%"/>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Cliente *</label>
+        <input id="na-cliente" type="text" placeholder="Nome do cliente" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%"/>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Descrição *</label>
+        <textarea id="na-texto" rows="2" placeholder="Descreva a atividade..." style="border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%;resize:none;font-family:inherit"></textarea>
+      </div>
+      <div class="row2">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Criado por *</label>
+          <input id="na-criado" type="text" placeholder="Seu nome" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%"/>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Vendedor</label>
+          <select id="na-vend" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%">
+            <option value="">Sem vendedor</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="fecharNovaAtividade()">Cancelar</button>
+      <button id="na-btn" class="btn-sv" style="width:auto;padding:8px 20px" onclick="salvarNovaAtividade()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- SCRIPTS -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
