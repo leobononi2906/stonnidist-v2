@@ -315,7 +315,7 @@ tr.clickable:hover{background:#ffffff08;cursor:pointer}
 
     <!-- Sidebar -->
     <nav class="sidebar">
-      <div class="sidebar-item active" id="nav-home" onclick="switchTab('home')">
+      <div class="sidebar-item" id="nav-home" onclick="switchTab('home')">
         <span class="icon">🏠</span>
         <span class="sidebar-label">Home</span>
       </div>
@@ -323,7 +323,7 @@ tr.clickable:hover{background:#ffffff08;cursor:pointer}
         <span class="icon">👤</span>
         <span class="sidebar-label">Vendedores</span>
       </div>
-      <div class="sidebar-item" id="nav-crm" onclick="switchTab('crm')">
+      <div class="sidebar-item active" id="nav-crm" onclick="switchTab('crm')"
         <span class="icon">💼</span>
         <span class="sidebar-label">CRM</span>
         <span id="crm-badge" class="sidebar-badge hidden">0</span>
@@ -337,7 +337,7 @@ tr.clickable:hover{background:#ffffff08;cursor:pointer}
     <!-- Páginas -->
 
     <!-- HOME -->
-    <div id="home-page" class="page active">
+    <div id="home-page" class="page">
       <div class="page-scroll">
         <div class="empty"><span class="spin">⟳</span> Carregando...</div>
       </div>
@@ -351,7 +351,7 @@ tr.clickable:hover{background:#ffffff08;cursor:pointer}
     </div>
 
     <!-- CRM -->
-    <div id="crm-page" class="page">
+    <div id="crm-page" class="page active">
       <div class="crm-body">
 
         <!-- Lista esquerda -->
@@ -437,50 +437,66 @@ tr.clickable:hover{background:#ffffff08;cursor:pointer}
 </div>
 
 <!-- ══════════ SCRIPTS ══════════ -->
+<!-- Supabase + auth carregam ANTES do DOM para doLogin estar disponível no onclick -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
-const SUPA_URL = 'https://vishxwdxqiygbxmtpfoy.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpc2h4d2R4cWl5Z2J4bXRwZm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0Njg2MjIsImV4cCI6MjA4ODA0NDYyMn0.J647m3ieDHahNQYBWMRESl0aPFXsT_zt_7ZcDvyB-SA';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+// Aguarda Supabase carregar, depois inicializa
+(function waitForSupabase() {
+  if (typeof supabase === 'undefined') { setTimeout(waitForSupabase, 50); return; }
 
-async function doLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const senha = document.getElementById('login-senha').value;
-  const btn = document.getElementById('login-btn');
-  const errEl = document.getElementById('login-error');
-  if (!email || !senha) { showErr('Preencha e-mail e senha'); return; }
-  btn.textContent = 'Entrando...'; btn.disabled = true;
-  errEl.style.display = 'none';
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
-  btn.textContent = 'Entrar'; btn.disabled = false;
-  if (error) { showErr(error.message || 'Erro ao fazer login'); return; }
-  const meta = data.user?.user_metadata || {};
-  if (!meta.admin && !(meta.modulos || []).includes('atacado')) {
-    await sb.auth.signOut(); showErr('Sem acesso ao módulo Atacado.'); return;
-  }
-  iniciarApp(data.user);
-}
-function showErr(msg) {
-  const el = document.getElementById('login-error');
-  el.textContent = msg; el.style.display = 'block';
-}
-async function doLogout() { await sb.auth.signOut(); location.reload(); }
-async function verificarSessao() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) return;
-  const meta = session.user?.user_metadata || {};
-  if (!meta.admin && !(meta.modulos || []).includes('atacado')) { await sb.auth.signOut(); return; }
-  iniciarApp(session.user);
-}
-function iniciarApp(user) {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-screen').classList.add('visible');
-  const el = document.getElementById('usuario-nome');
-  if (el) el.textContent = user?.user_metadata?.nome || user?.email || '';
-  if (window.CRMModule) window.CRMModule.init();
-}
-verificarSessao();
+  const SUPA_URL = 'https://vishxwdxqiygbxmtpfoy.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpc2h4d2R4cWl5Z2J4bXRwZm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0Njg2MjIsImV4cCI6MjA4ODA0NDYyMn0.J647m3ieDHahNQYBWMRESl0aPFXsT_zt_7ZcDvyB-SA';
+  window.SUPA_URL = SUPA_URL;
+  window.SUPA_KEY = SUPA_KEY;
+  window.sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  window.doLogin = async function() {
+    const email = document.getElementById('login-email').value.trim();
+    const senha = document.getElementById('login-senha').value;
+    const btn = document.getElementById('login-btn');
+    if (!email || !senha) { showErr('Preencha e-mail e senha'); return; }
+    btn.textContent = 'Entrando...'; btn.disabled = true;
+    document.getElementById('login-error').style.display = 'none';
+    const { data, error } = await window.sb.auth.signInWithPassword({ email, password: senha });
+    btn.textContent = 'Entrar'; btn.disabled = false;
+    if (error) { showErr(error.message || 'Erro ao fazer login'); return; }
+    const meta = data.user?.user_metadata || {};
+    if (!meta.admin && !(meta.modulos || []).includes('atacado')) {
+      await window.sb.auth.signOut(); showErr('Sem acesso ao módulo Atacado.'); return;
+    }
+    iniciarApp(data.user);
+  };
+
+  window.showErr = function(msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg; el.style.display = 'block';
+  };
+
+  window.doLogout = async function() { await window.sb.auth.signOut(); location.reload(); };
+
+  window.iniciarApp = function(user) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').classList.add('visible');
+    const el = document.getElementById('usuario-nome');
+    if (el) el.textContent = user?.user_metadata?.nome || user?.email || '';
+    // Inicia o CRM — se crm.js ainda não carregou, aguarda
+    function tryInit() {
+      if (window.CRMModule) { window.CRMModule.init(); }
+      else { setTimeout(tryInit, 80); }
+    }
+    tryInit();
+  };
+
+  // Verifica sessão existente ao carregar
+  window.sb.auth.getSession().then(({ data: { session } }) => {
+    if (!session) return;
+    const meta = session.user?.user_metadata || {};
+    if (!meta.admin && !(meta.modulos || []).includes('atacado')) { window.sb.auth.signOut(); return; }
+    iniciarApp(session.user);
+  });
+
+})();
 </script>
-<script src="crm.js?v=20260607"></script>
+<script src="crm.js?v=20260607b"></script>
 </body>
 </html>
