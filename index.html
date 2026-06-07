@@ -449,6 +449,9 @@ input,select,textarea { width:100%; }
         <span id="umbl-cnt" class="nav-badge hidden">0</span>
       </div>
       <div class="nav-separator"></div>
+      <div class="nav-item" id="si-agenda" onclick="gotoTab('agenda')">
+        <span class="nav-icon">📋</span> Agenda
+      </div>
       <div class="nav-item" id="si-config" onclick="gotoTab('config')">
         <span class="nav-icon">⚙️</span> Configurações
       </div>
@@ -495,7 +498,7 @@ input,select,textarea { width:100%; }
         <input id="f-start" type="date" class="filter-input hidden" onchange="onCustomDate()"/>
         <span id="f-sep" class="tf-label hidden">até</span>
         <input id="f-end" type="date" class="filter-input hidden" onchange="onCustomDate()"/>
-        <span class="tf-label">Vendedor</span>
+        <span class="tf-label" data-tf="vend">Vendedor</span>
         <select id="f-vend" class="filter-select" onchange="onVendChange(this.value)" style="min-width:130px">
           <option value="">Todos</option>
         </select>
@@ -592,6 +595,9 @@ input,select,textarea { width:100%; }
           </div>
         </div>
       </div>
+
+      <!-- AGENDA -->
+      <div id="pg-agenda" class="pg"></div>
 
       <!-- CONFIG -->
       <div id="pg-config" class="pg"><div id="cfg-body"></div></div>
