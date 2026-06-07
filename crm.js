@@ -29,7 +29,7 @@ const S = {
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
   notas: [], telefones: [], pedidos: [],
   overdueIds: new Set(),
-  mainTab: 'carteira',
+  mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   subFilter: 'todos',
   prospTab: 'minha',   // 'minha' | 'geral'
   pSub: 'todos', pSort: 'nome_az',
@@ -409,7 +409,7 @@ function gotoTab(tab) {
   if(tab==='vendedores')renderVendedores();
   if(tab==='crm')renderCRM();
   if(tab==='config')renderConfig();
-  if(tab==='agenda')renderAgenda();
+  
 }
 
 // ══════════════════════════════════════════════════════════
@@ -759,9 +759,16 @@ function renderDrawer(){
         ${dim.email?`<span>✉ ${dim.email}</span>`:''}
         <span style="color:#334155">Cód. ERP: ${c.id_cliente}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:#94a3b8">
-        Vendedor: <strong style="color:#e2e8f0">${c.nome_vendedor_responsavel?sN(c.nome_vendedor_responsavel):'<span style="color:#7c3aed">Sem vendedor</span>'}</strong>
-        ${!c.nome_vendedor_responsavel?`<button class="btn-assumir" style="margin-left:8px;padding:4px 10px;font-size:11px" onclick="assumirCliente(${c.id_cliente},'${esc(c.nome_cliente)}')">+ Assumir</button>`:''}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text-muted)">Vendedor:</span>
+        <strong style="font-size:12px;color:var(--text-primary)">${c.nome_vendedor_responsavel?sN(c.nome_vendedor_responsavel):'<em style=\"color:var(--purple);font-style:normal;font-weight:600\">Sem vendedor</em>'}</strong>
+        <button onclick="abrirModalVendedor(${c.id_cliente},'${esc(c.nome_cliente)}',${c.id_vendedor_responsavel||'null'})"
+          style="font-size:11px;padding:3px 9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--blue-mid);background:var(--blue-pale);cursor:pointer;font-weight:600;transition:all .15s"
+          onmouseover="this.style.background='var(--blue-dark)';this.style.color='#fff'"
+          onmouseout="this.style.background='var(--blue-pale)';this.style.color='var(--blue-mid)'">
+          ✎ Alterar
+        </button>
+        ${!c.nome_vendedor_responsavel?`<button class="btn-assumir" style="padding:3px 9px;font-size:11px" onclick="assumirCliente(${c.id_cliente},'${esc(c.nome_cliente)}')">+ Assumir</button>`:''}
       </div>
     </div>
 
@@ -1090,19 +1097,83 @@ async function confirmarVinc(cId,cNome){
   }
 }
 
+// ── MODAL ALTERAR VENDEDOR ────────────────────────────────────
+function abrirModalVendedor(cId, cNome, vendAtualId) {
+  const m = document.getElementById('modal-alterar-vendedor');
+  if (!m) return;
+  m.dataset.cid = cId;
+  m.dataset.cnome = cNome;
+  document.getElementById('av-title').textContent = `Vendedor de ${cNome.split(' ')[0]}`;
+  const sel = document.getElementById('av-vend');
+  sel.innerHTML = '<option value="">Sem vendedor (Prospecção Geral)</option>' +
+    S.vendedores.map(v => `<option value="${v.id_vendedor}"${v.id_vendedor===vendAtualId?' selected':''}>${v.nome_vendedor}</option>`).join('');
+  m.classList.add('open');
+}
+function fecharModalVendedor() {
+  document.getElementById('modal-alterar-vendedor')?.classList.remove('open');
+}
+async function salvarModalVendedor() {
+  const m = document.getElementById('modal-alterar-vendedor');
+  if (!m) return;
+  const cId = Number(m.dataset.cid);
+  const cNome = m.dataset.cnome;
+  const vendId = document.getElementById('av-vend')?.value;
+  const btn = document.getElementById('av-btn');
+  if (btn) { btn.textContent = 'Salvando...'; btn.disabled = true; }
+  try {
+    if (vendId) {
+      const vend = S.vendedores.find(v => v.id_vendedor === Number(vendId));
+      await sbUpsert('atac_cliente_vendedor', {
+        id_cliente: cId, nome_cliente: cNome,
+        id_vendedor_responsavel: Number(vendId),
+        nome_vendedor_responsavel: vend?.nome_vendedor || '',
+        atualizado_por: 'CRM_MANUAL',
+      }, 'id_cliente');
+      toast(`✅ Vendedor alterado para ${sN(vend?.nome_vendedor||'')}`);
+    } else {
+      // Remover vínculo → volta para prospecção geral
+      await sbDel('atac_cliente_vendedor', 'id_cliente', cId);
+      toast('Vínculo removido → cliente vai para Prospecção Geral');
+    }
+    fecharModalVendedor();
+    // Recarregar dados e drawer
+    await Promise.all([loadCarteira(), loadProspeccao()]);
+    // Atualizar selCliente com dados frescos
+    const lista = [...S.carteira, ...S.prospeccao, ...S.prospGeral];
+    S.selCliente = lista.find(c => c.id_cliente === cId) || S.selCliente;
+    if (S.selId) renderDrawer();
+    renderLista();
+  } finally {
+    if (btn) { btn.textContent = 'Salvar'; btn.disabled = false; }
+  }
+}
+
 // controles UI
 function setMainTab(tab){
-  S.mainTab=tab;S.selId=null;S.selCliente=null;closeDrawer();
+  S.mainTab=tab;
+  if(tab!=='agenda'){S.selId=null;S.selCliente=null;closeDrawer();}
+  // Botões de tab
   document.getElementById('tab-c')?.classList.toggle('on',tab==='carteira');
   document.getElementById('tab-p')?.classList.toggle('on',tab==='prospeccao');
+  document.getElementById('tab-a')?.classList.toggle('on',tab==='agenda');
+  // Controles específicos
   document.getElementById('ctrl-c')?.classList.toggle('hidden',tab!=='carteira');
-  // ctrl-p usa display flex/none pois tem flex-direction:column
   const ctrlP=document.getElementById('ctrl-p');
   if(ctrlP) ctrlP.style.display=(tab==='prospeccao')?'flex':'none';
-  // Mostrar/ocultar filtros extras só na sub-aba Minha
   const ctrlPP=document.getElementById('ctrl-pp');
   if(ctrlPP) ctrlPP.style.display=(tab==='prospeccao'&&S.prospTab==='minha')?'':'none';
-  renderLista();
+  // Painel: lista+detalhe vs agenda
+  const crmWrap=document.getElementById('crm-inner-wrap');
+  const agendaPanel=document.getElementById('crm-agenda-panel');
+  if(tab==='agenda'){
+    if(crmWrap) crmWrap.style.display='none';
+    if(agendaPanel) agendaPanel.style.display='flex';
+    renderAgendaCRM();
+  } else {
+    if(crmWrap) crmWrap.style.display='flex';
+    if(agendaPanel) agendaPanel.style.display='none';
+    renderLista();
+  }
 }
 function setProspTab(pt){
   S.prospTab=pt;S.selId=null;S.selCliente=null;closeDrawer();
@@ -1293,15 +1364,24 @@ async function assumirCliente(id, nomeCliente) {
 
 // exports
 // ══════════════════════════════════════════════════════════
-// ABA AGENDA
+// AGENDA — sub-aba do CRM (filtra por vendedor da topbar)
 // ══════════════════════════════════════════════════════════
-async function renderAgenda() {
-  const el = document.getElementById('pg-agenda'); if(!el)return;
-  el.innerHTML = '<div class="pscroll"><div class="empty-msg"><div class="spinner" style="margin:0 auto 12px"></div>Carregando agenda...</div></div>';
+async function renderAgendaCRM() {
+  const el = document.getElementById('crm-agenda-panel'); if(!el)return;
+  el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>';
 
-  // Buscar todas as tarefas não resolvidas (filtradas por vendedor se selecionado)
+  // OBRIGATÓRIO ter vendedor selecionado ou ser admin
+  if (!F.vendedorId) {
+    el.innerHTML = `<div style="padding:24px;text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">👤</div>
+      <p style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px">Selecione um Vendedor</p>
+      <p style="font-size:12px;color:var(--text-muted)">Use o filtro de vendedor na barra superior para ver a agenda</p>
+    </div>`;
+    return;
+  }
+
   let params = 'select=id,tipo,nome_cliente,texto,data_prevista,criado_por,nome_vendedor_responsavel,resolvido&resolvido=eq.false&order=data_prevista.asc.nullslast';
-  if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const tarefas = await sbQ('atac_crm_notas', params);
 
   // Separar por período
@@ -1354,7 +1434,7 @@ async function renderAgenda() {
     </div>`;
   };
 
-  el.innerHTML = `<div class="pscroll">
+  el.innerHTML = `<div style="height:100%;overflow-y:auto;padding:16px 20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div>
         <h2 style="font-size:16px;font-weight:700;color:var(--text-primary)">📋 Agenda de Atividades</h2>
@@ -1400,7 +1480,7 @@ window.APP={init, refresh: async function(){
 }};
 window.gotoTab=gotoTab;
 window.descartarCliente=descartarCliente;
-window.renderAgenda=renderAgenda;
+window.renderAgendaCRM=renderAgendaCRM;
 window.selClienteByNome=selClienteByNome;
 window.applyPeriod=onPeriodChange; // alias para compatibilidade
 window.onPeriodChange=onPeriodChange;
