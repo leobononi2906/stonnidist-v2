@@ -100,7 +100,7 @@ input,select,textarea { width:100%; }
 /* ══ PÁGINAS ══ */
 .pg { display:none; padding:20px 24px; height:100%; }
 .pg.active { display:block; }
-.pg-crm { display:none; padding:0; overflow:hidden; height:100%; }
+.pg-crm { display:none; padding:0; overflow:hidden; height:100%; flex-direction:column; }
 .pg-crm.active { display:flex; }
 
 /* ══ KPI CARDS ══ */
@@ -526,11 +526,12 @@ input,select,textarea { width:100%; }
 
       <!-- CRM -->
       <div id="pg-crm" class="pg-crm active">
-        <div class="crm-wrap" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
-          <!-- agenda inline panel -->
-          <div id="crm-agenda-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column"></div>
-          <!-- inner wrap: lista + drawer (oculto quando agenda ativa) -->
-          <div id="crm-inner-wrap" style="display:flex;flex:1;overflow:hidden">
+
+        <!-- AGENDA PANEL (oculto por padrão) -->
+        <div id="crm-agenda-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column"></div>
+
+        <!-- WRAP PRINCIPAL lista + drawer -->
+        <div id="crm-inner-wrap" style="display:flex;flex:1;overflow:hidden">
 
           <!-- Lista esquerda -->
           <div class="cl-panel">
@@ -550,7 +551,6 @@ input,select,textarea { width:100%; }
                 <button data-sf="atencao" class="fb" onclick="setSub('atencao')">Atenção</button>
                 <button data-sf="em_risco" class="fb" onclick="setSub('em_risco')">Em Risco</button>
               </div>
-              <!-- sub-abas Prospecção -->
               <div id="ctrl-p" style="display:none;flex-direction:column;gap:6px">
                 <div class="tabs-row">
                   <button data-pt="minha" class="tb-btn on" onclick="setProspTab('minha')" style="font-size:11px;padding:5px 10px">Minha</button>
@@ -570,8 +570,8 @@ input,select,textarea { width:100%; }
 
             <!-- Umbler pendentes (acima da lista) -->
             <div id="umbl-wrap" class="umbl-wrap"></div>
-            <!-- Atividades de hoje -->
-            <div id="today-wrap" class="today-wrap"></div>
+            <!-- Alertas CRM (substitui today-wrap) -->
+            <div id="crm-alertas" style="flex-shrink:0"></div>
             <!-- Lista -->
             <div id="cl-list" class="cl-list">
               <div class="empty-msg"><div class="spinner" style="margin:0 auto"></div></div>
@@ -595,8 +595,9 @@ input,select,textarea { width:100%; }
               <div id="dw-body" class="dw-body"></div>
             </div>
           </div>
-        </div>
-      </div>
+
+        </div><!-- crm-inner-wrap -->
+      </div><!-- pg-crm -->
 
       <!-- CONFIG -->
       <div id="pg-config" class="pg"><div id="cfg-body"></div></div>
