@@ -327,7 +327,7 @@ async function loadDetalhe(id) {
   const [notas,tels,peds]=await Promise.all([
     sbQ('atac_crm_notas',`select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
     sbQ('atac_cliente_telefones',`select=*&id_cliente=eq.${id}&order=principal.desc`),
-    sbQ('vw_comercial_docs_faturados',`select=data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${id}&order=data_faturamento.desc&limit=10`),
+    sbQ('vw_comercial_docs_faturados',`select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${id}&order=data_faturamento.desc&limit=10`),
   ]);
   S.notas=Array.isArray(notas)?notas:[];
   // Deduplicar telefones por número — evita duplicatas da tabela
@@ -860,7 +860,26 @@ function renderDrawer(){
 
     <div>
       <div class="sec-head"><span class="sec-lbl">📦 Últimos Pedidos</span></div>
-      ${S.pedidos.length?`<table><thead><tr><th>Data</th><th class="r">Valor</th><th class="r">Itens</th></tr></thead><tbody>${S.pedidos.map(p=>`<tr><td>${fmtD(p.data_faturamento)}</td><td class="r">${fmt(docFat(p))}</td><td class="r">${p.qtd_itens_doc||0}</td></tr>`).join('')}</tbody></table>`:'<p style="color:#475569;font-size:12px">Sem pedidos</p>'}
+      ${S.pedidos.length?`
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>NF</th>
+              <th class="r">Valor</th>
+              <th class="r">Itens</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${S.pedidos.map(p=>`
+              <tr>
+                <td>${fmtD(p.data_faturamento)}</td>
+                <td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-size:12px">${p.id_doc||'—'}</td>
+                <td class="r" style="font-weight:600">${fmt(docFat(p))}</td>
+                <td class="r">${p.qtd_itens_doc||0}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`:'<p style="color:var(--text-muted);font-size:12px">Sem pedidos no histórico</p>'}
     </div>
 
     <div>
@@ -962,20 +981,30 @@ async function renderConfig() {
     <div class="cfg-section">
       <h3>📲 Contatos Umbler Recentes</h3>
       <p style="font-size:11px;color:#64748b;margin-bottom:10px">Todos os contatos recebidos. Verde = vinculado a um cliente. Vermelho = sem vínculo.</p>
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr><th>Contato</th><th>Telefone</th><th>Atendente</th><th>Último contato</th><th>Status</th></tr></thead>
-          <tbody>
-            ${(Array.isArray(allUmbl)?allUmbl:[]).map(c=>`
-              <tr>
-                <td>${c.nome_contato||'Sem nome'}</td>
-                <td style="font-family:monospace">${fmtP(c.telefone)}</td>
-                <td>${c.nome_atendente||'—'}</td>
-                <td>${fmtDT(c.ultimo_contato)}</td>
-                <td>${telVincSet.has(c.telefone)?`<span class="tag-vinc">✓ ${telVincMap.get(c.telefone)||'Vinculado'}</span>`:`<span class="tag-semvinc">Sem vínculo</span>`}</td>
-              </tr>`).join('')||'<tr><td colspan="5" style="text-align:center;color:#475569;padding:20px">Sem contatos</td></tr>'}
-          </tbody>
-        </table>
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto">
+        ${(Array.isArray(allUmbl)?allUmbl:[]).map(c=>{
+          const vinculado = telVincSet.has(c.telefone);
+          const nomeCliente = telVincMap.get(c.telefone)||'';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);border-left:3px solid ${vinculado?'var(--green)':'var(--red)'}">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+                <span style="font-size:13px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome_contato||'Sem nome'}</span>
+                ${vinculado?`<span class="tag-vinc">✓ ${nomeCliente.split(' ').slice(0,2).join(' ')}</span>`:'<span class="tag-semvinc">Sem vínculo</span>'}
+              </div>
+              <div style="display:flex;gap:10px;font-size:11px;color:var(--text-muted);flex-wrap:wrap">
+                <span style="font-family:'DM Mono',monospace">${fmtP(c.telefone)}</span>
+                ${c.nome_atendente?`<span>${c.nome_atendente}</span>`:''}
+                <span>${fmtDT(c.ultimo_contato)}</span>
+              </div>
+            </div>
+            ${!vinculado?`
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="btn-sm" onclick="abrirVinc('${esc(c.telefone)}','${esc(c.nome_contato||'')}','${esc(c.nome_atendente||'')}')">🔗 Vincular</button>
+                <button class="btn-sm" style="color:var(--blue-mid)" onclick="abrirNovoContato('${esc(c.telefone)}','${esc(c.nome_contato||'')}','${esc(c.nome_atendente||'')}')">👤 Criar</button>
+                <button class="btn-sm danger" onclick="naoComercialConfig('${esc(c.telefone)}')">✕ NC</button>
+              </div>`:''}
+          </div>`;
+        }).join('')||'<p class="empty-msg">Sem contatos recentes</p>'}
       </div>
     </div>
 
@@ -1088,6 +1117,12 @@ async function naoComercial(tel){
   await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:m});
   toast('Marcado como não comercial');
   await loadUmbler();renderUmbler();
+}
+async function naoComercialConfig(tel){
+  const m=prompt('Motivo (obrigatório):');if(!m?.trim())return;
+  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:m});
+  toast('Marcado como não comercial');
+  renderConfig(); // recarrega a tela de config
 }
 
 // modal vincular cliente
@@ -1241,7 +1276,12 @@ function setProspTab(pt){
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
 function setPSort(v){S.pSort=v;renderLista();}
-function handleSearch(v){S.search=v;renderLista();}
+function handleSearch(v){
+  S.search=v;
+  // Se está na agenda, volta para carteira antes de buscar
+  if(S.mainTab==='agenda') setMainTab('carteira');
+  renderLista();
+}
 
 // ── MODAL NOVO CONTATO UMBLER → PROSPECÇÃO ────────────────────
 function abrirNovoContato(tel, nome, atend) {
@@ -1419,97 +1459,282 @@ async function assumirCliente(id, nomeCliente) {
 
 // exports
 // ══════════════════════════════════════════════════════════
-// AGENDA — sub-aba do CRM (filtra por vendedor da topbar)
+// AGENDA CALENDÁRIO — sub-aba do CRM
 // ══════════════════════════════════════════════════════════
+
+// Estado da agenda
+const AG = {
+  ano: new Date().getFullYear(),
+  mes: new Date().getMonth(),   // 0–11
+  diaSel: null,
+  tarefas: [],   // todas as tarefas do mês carregado
+};
+
 async function renderAgendaCRM() {
-  const el = document.getElementById('crm-agenda-panel'); if(!el)return;
+  const el = document.getElementById('crm-agenda-panel');
+  if (!el) return;
   el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>';
+  await loadTarefasMes();
+  drawAgenda(el);
+}
 
-  let params = 'select=id,tipo,nome_cliente,texto,data_prevista,criado_por,nome_vendedor_responsavel,resolvido&resolvido=eq.false&order=data_prevista.asc.nullslast';
-  if (F.vendedorId) {
-    params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
-  }
-  // Sem filtro = admin vê todos
-  const tarefas = await sbQ('atac_crm_notas', params);
+async function loadTarefasMes() {
+  const inicio = new Date(AG.ano, AG.mes, 1).toISOString().split('T')[0];
+  const fim    = new Date(AG.ano, AG.mes+1, 0).toISOString().split('T')[0];
+  let params = `select=id,tipo,nome_cliente,texto,data_prevista,criado_por,nome_vendedor_responsavel,resolvido&data_prevista=gte.${inicio}&data_prevista=lte.${fim}&order=data_prevista.asc`;
+  if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  const d = await sbQ('atac_crm_notas', params);
+  AG.tarefas = Array.isArray(d) ? d : [];
+}
 
-  // Separar por período
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const amanha = new Date(hoje); amanha.setDate(amanha.getDate()+1);
-  const semana = new Date(hoje); semana.setDate(semana.getDate()+7);
+function drawAgenda(el) {
+  const hoje = new Date();
+  const primeiroDia = new Date(AG.ano, AG.mes, 1);
+  const ultimoDia   = new Date(AG.ano, AG.mes+1, 0);
+  const diasNoMes   = ultimoDia.getDate();
+  const inicioSem   = primeiroDia.getDay(); // 0=dom
 
-  const vencidas=[], paraHoje=[], semanaAte=[], futuras=[], semData=[];
-  (Array.isArray(tarefas)?tarefas:[]).forEach(t => {
-    if (!t.data_prevista) { semData.push(t); return; }
-    const dt = new Date(t.data_prevista+'T12:00:00'); dt.setHours(0,0,0,0);
-    if (dt < hoje) vencidas.push(t);
-    else if (dt.getTime() === hoje.getTime()) paraHoje.push(t);
-    else if (dt <= semana) semanaAte.push(t);
-    else futuras.push(t);
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  // Agrupar tarefas por dia
+  const porDia = new Map();
+  AG.tarefas.forEach(t => {
+    if (!t.data_prevista) return;
+    const d = t.data_prevista.substring(0,10);
+    if (!porDia.has(d)) porDia.set(d, []);
+    porDia.get(d).push(t);
   });
 
-  const renderGrupo = (titulo, items, cor) => {
-    if (!items.length) return '';
-    return `<div class="scard" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="scard-title" style="color:${cor};margin-bottom:0">${titulo}</div>
-        <span style="font-size:11px;font-weight:700;background:${cor}22;color:${cor};border-radius:20px;padding:2px 8px">${items.length}</span>
-      </div>
-      ${items.map(t => `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
-              ${tipoBdg(t.tipo)}
-              <span style="font-size:13px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.nome_cliente}</span>
-            </div>
-            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:2px">${t.texto||'—'}</p>
-            <div style="display:flex;gap:10px;font-size:10px;color:var(--text-muted)">
-              ${t.data_prevista?`<span>📅 ${fmtD(t.data_prevista)}</span>`:''}
-              ${t.criado_por?`<span>Por: ${t.criado_por}</span>`:''}
-              ${t.nome_vendedor_responsavel?`<span>Vend: ${sN(t.nome_vendedor_responsavel)}</span>`:''}
-            </div>
-          </div>
-          <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
-            <button onclick="selClienteByNome('${esc(t.nome_cliente)}')"
-              style="font-size:11px;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:none;cursor:pointer;font-weight:500">
-              Ver
-            </button>
-            <button onclick="resolverNota('${t.id}',false)"
-              style="font-size:11px;padding:4px 8px;border:1.5px solid var(--green);border-radius:var(--radius-sm);color:var(--green);background:var(--green-bg);cursor:pointer;font-weight:600">
-              ✓ Resolver
-            </button>
-          </div>
-        </div>`).join('')}
-    </div>`;
-  };
+  // Dia selecionado: padrão = hoje se no mês atual
+  if (!AG.diaSel) {
+    AG.diaSel = (hoje.getFullYear()===AG.ano && hoje.getMonth()===AG.mes)
+      ? `${AG.ano}-${String(AG.mes+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`
+      : `${AG.ano}-${String(AG.mes+1).padStart(2,'0')}-01`;
+  }
 
   const vendNome = F.vendedorId ? sN(S.vendedores.find(v=>v.id_vendedor===F.vendedorId)?.nome_vendedor||'') : 'Todos';
-  el.innerHTML = `<div style="height:100%;overflow-y:auto;padding:16px 20px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <button onclick="setMainTab('carteira')"
-        style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--blue-mid);background:var(--blue-pale);border:1.5px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:6px 12px;cursor:pointer;transition:all .15s"
-        onmouseover="this.style.background='var(--blue-dark)';this.style.color='#fff'"
-        onmouseout="this.style.background='var(--blue-pale)';this.style.color='var(--blue-mid)'">
-        ← Voltar ao CRM
-      </button>
-      <div style="flex:1">
-        <h2 style="font-size:15px;font-weight:700;color:var(--text-primary)">📋 Agenda — ${vendNome}</h2>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:1px">
-          ${!F.vendedorId?'Filtre por vendedor na topbar para ver agenda individual':''}
-        </p>
+
+  // Contar pendentes
+  const vencidas = AG.tarefas.filter(t=>!t.resolvido && t.data_prevista < hoje.toISOString().split('T')[0]).length;
+  const deHoje   = AG.tarefas.filter(t=>!t.resolvido && t.data_prevista === hoje.toISOString().split('T')[0]).length;
+
+  el.innerHTML = `
+    <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+
+      <!-- Header da agenda -->
+      <div style="padding:12px 20px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button onclick="setMainTab('carteira')"
+            style="font-size:12px;font-weight:600;color:var(--blue-mid);background:var(--blue-pale);border:1.5px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:5px 12px;cursor:pointer">
+            ← CRM
+          </button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="navMes(-1)" style="width:28px;height:28px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">‹</button>
+            <span style="font-size:14px;font-weight:700;color:var(--text-primary);min-width:140px;text-align:center">${MESES[AG.mes]} ${AG.ano}</span>
+            <button onclick="navMes(1)"  style="width:28px;height:28px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">›</button>
+            <button onclick="navMes(0)"  style="font-size:11px;font-weight:600;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer">Hoje</button>
+          </div>
+          <span style="font-size:12px;color:var(--text-muted)">— ${vendNome}</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            ${vencidas?`<span style="background:var(--red-bg);color:var(--red);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700">⚠ ${vencidas}</span>`:''}
+            ${deHoje?`<span style="background:var(--blue-pale);color:var(--blue-dark);padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700">📌 ${deHoje}</span>`:''}
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:6px;font-size:11px">
-        ${vencidas.length?`<span style="background:var(--red-bg);color:var(--red);padding:3px 8px;border-radius:20px;font-weight:700">⚠ ${vencidas.length}</span>`:''}
-        ${paraHoje.length?`<span style="background:var(--blue-pale);color:var(--blue-dark);padding:3px 8px;border-radius:20px;font-weight:700">📌 ${paraHoje.length}</span>`:''}
+
+      <!-- Corpo: calendário + painel lateral -->
+      <div style="display:flex;flex:1;overflow:hidden">
+
+        <!-- CALENDÁRIO -->
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;padding:12px">
+
+          <!-- Cabeçalho dias da semana -->
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px">
+            ${DIAS_SEM.map(d=>`<div style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);padding:4px">${d}</div>`).join('')}
+          </div>
+
+          <!-- Grid dias -->
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;flex:1">
+            ${Array.from({length: inicioSem}, ()=>'<div></div>').join('')}
+            ${Array.from({length: diasNoMes}, (_,i)=>{
+              const dia = i+1;
+              const dStr = `${AG.ano}-${String(AG.mes+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+              const eHoje = hoje.getFullYear()===AG.ano && hoje.getMonth()===AG.mes && hoje.getDate()===dia;
+              const eSel  = AG.diaSel === dStr;
+              const tarefasDia = porDia.get(dStr) || [];
+              const temVencida = tarefasDia.some(t=>!t.resolvido && dStr < hoje.toISOString().split('T')[0]);
+              const temAtiva   = tarefasDia.some(t=>!t.resolvido);
+              const temResol   = tarefasDia.length && tarefasDia.every(t=>t.resolvido);
+
+              let bg='transparent', border='1px solid transparent', txtColor='var(--text-primary)';
+              if(eSel)  { bg='var(--blue-dark)'; border='1px solid var(--blue-dark)'; txtColor='#fff'; }
+              else if(eHoje) { border='2px solid var(--blue-mid)'; }
+
+              let dotHtml = '';
+              if(!eSel && tarefasDia.length) {
+                if(temVencida) dotHtml=`<div style="width:5px;height:5px;border-radius:50%;background:var(--red);margin:1px auto 0"></div>`;
+                else if(temAtiva) dotHtml=`<div style="width:5px;height:5px;border-radius:50%;background:var(--blue-mid);margin:1px auto 0"></div>`;
+                else dotHtml=`<div style="width:5px;height:5px;border-radius:50%;background:var(--green);margin:1px auto 0"></div>`;
+              }
+
+              return `<button onclick="selDia('${dStr}')" style="background:${bg};border:${border};border-radius:var(--radius-sm);padding:4px 2px;cursor:pointer;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;transition:all .1s" onmouseover="if('${eSel}'!=='true')this.style.background='var(--surface2)'" onmouseout="if('${eSel}'!=='true')this.style.background='${bg}'">
+                <span style="font-size:12px;font-weight:${eHoje||eSel?700:400};color:${txtColor}">${dia}</span>
+                ${tarefasDia.length&&!eSel?`<span style="font-size:9px;color:${eSel?'rgba(255,255,255,.7)':temVencida?'var(--red)':temAtiva?'var(--blue-mid)':'var(--green)'};font-weight:600">${tarefasDia.length}</span>`:''}
+                ${dotHtml}
+              </button>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- PAINEL LATERAL: tarefas do dia selecionado -->
+        <div id="agenda-dia-panel" style="width:280px;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;background:var(--surface)">
+        </div>
+
       </div>
-    </div>
-    ${renderGrupo('⚠ Vencidas', vencidas, 'var(--red)')}
-    ${renderGrupo('📌 Para Hoje', paraHoje, 'var(--blue-mid)')}
-    ${renderGrupo('📅 Esta Semana', semanaAte, 'var(--orange)')}
-    ${renderGrupo('🗓 Futuras', futuras, 'var(--text-muted)')}
-    ${renderGrupo('📝 Sem Data', semData, 'var(--text-muted)')}
-    ${!tarefas?.length?`<div class="empty-msg"><p style="font-size:32px;margin-bottom:8px">✅</p><p>Nenhuma atividade pendente</p></div>`:''}
-  </div>`;
+    </div>`;
+
+  // Renderizar painel do dia selecionado
+  renderDiaPanel();
 }
+
+function selDia(dStr) {
+  AG.diaSel = dStr;
+  // Re-render só o painel (não o calendário inteiro — evita flickering)
+  const cals = document.getElementById('crm-agenda-panel');
+  if (cals) {
+    // Re-highlight dos botões
+    const dias = cals.querySelectorAll('button[onclick^="selDia"]');
+    dias.forEach(btn => {
+      const d = btn.getAttribute('onclick').match(/'(.+)'/)?.[1];
+      if (d === dStr) { btn.style.background='var(--blue-dark)'; btn.style.border='1px solid var(--blue-dark)'; }
+      else if (btn.style.border.includes('2px')) {} // hoje: mantém
+      else { btn.style.background='transparent'; btn.style.border='1px solid transparent'; }
+    });
+  }
+  renderDiaPanel();
+}
+
+function renderDiaPanel() {
+  const el = document.getElementById('agenda-dia-panel');
+  if (!el) return;
+  const dStr = AG.diaSel;
+  if (!dStr) { el.innerHTML=''; return; }
+
+  const tarefas = AG.tarefas.filter(t => t.data_prevista === dStr);
+  const hoje = new Date().toISOString().split('T')[0];
+  const [ano,mes,dia] = dStr.split('-').map(Number);
+  const dLabel = `${String(dia).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${ano}`;
+  const eHoje = dStr === hoje;
+  const ePassado = dStr < hoje;
+
+  el.innerHTML = `
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <p style="font-size:13px;font-weight:700;color:var(--text-primary)">${dLabel}${eHoje?' — Hoje':''}</p>
+        <p style="font-size:11px;color:var(--text-muted)">${tarefas.length} atividade${tarefas.length!==1?'s':''}</p>
+      </div>
+      <button onclick="abrirNovaAtividade('${dStr}')"
+        style="font-size:11px;font-weight:700;padding:5px 10px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer">
+        + Nova
+      </button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:8px">
+      ${tarefas.length ? tarefas.map(t=>`
+        <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${t.resolvido?'var(--green)':ePassado&&!t.resolvido?'var(--red)':'var(--blue-mid)'};border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            ${tipoBdg(t.tipo)}
+            ${!t.resolvido?`<button onclick="resolverNotaAgenda('${t.id}')" style="font-size:10px;color:var(--green);background:none;border:none;cursor:pointer;font-weight:700">✓</button>`:`<span style="font-size:10px;color:var(--green);font-weight:600">✓ Feito</span>`}
+          </div>
+          <p style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:2px;line-height:1.3">${t.nome_cliente}</p>
+          <p style="font-size:11px;color:var(--text-secondary)">${t.texto||'—'}</p>
+          ${t.criado_por?`<p style="font-size:10px;color:var(--text-muted);margin-top:3px">Por: ${t.criado_por}</p>`:''}
+        </div>`).join('')
+      : `<div style="text-align:center;padding:24px 12px;color:var(--text-muted)">
+          <div style="font-size:28px;margin-bottom:8px">📅</div>
+          <p style="font-size:12px">Nenhuma atividade</p>
+          <button onclick="abrirNovaAtividade('${dStr}')"
+            style="font-size:11px;font-weight:600;color:var(--blue-mid);background:none;border:none;cursor:pointer;margin-top:6px;text-decoration:underline">
+            + Adicionar atividade
+          </button>
+        </div>`}
+    </div>`;
+}
+
+function navMes(delta) {
+  if (delta === 0) {
+    const now = new Date();
+    AG.ano = now.getFullYear();
+    AG.mes = now.getMonth();
+    AG.diaSel = null;
+  } else {
+    AG.mes += delta;
+    if (AG.mes < 0) { AG.mes = 11; AG.ano--; }
+    if (AG.mes > 11) { AG.mes = 0;  AG.ano++; }
+    AG.diaSel = null;
+  }
+  renderAgendaCRM();
+}
+
+// Modal Nova Atividade a partir da agenda
+function abrirNovaAtividade(dataPrevista) {
+  const m = document.getElementById('modal-nova-ativ');
+  if (!m) return;
+  m.dataset.data = dataPrevista;
+  document.getElementById('na-data').value = dataPrevista;
+  document.getElementById('na-cliente').value = '';
+  document.getElementById('na-texto').value = '';
+  document.getElementById('na-criado').value = '';
+  document.getElementById('na-tipo').value = 'TAREFA';
+  // popular select vendedor
+  const sel = document.getElementById('na-vend');
+  if(sel) {
+    sel.innerHTML = '<option value="">Sem vendedor</option>' +
+      S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===F.vendedorId?' selected':''}>${v.nome_vendedor}</option>`).join('');
+  }
+  m.classList.add('open');
+}
+function fecharNovaAtividade() { document.getElementById('modal-nova-ativ')?.classList.remove('open'); }
+
+async function salvarNovaAtividade() {
+  const tipo    = document.getElementById('na-tipo')?.value;
+  const cliente = document.getElementById('na-cliente')?.value?.trim();
+  const texto   = document.getElementById('na-texto')?.value?.trim();
+  const criado  = document.getElementById('na-criado')?.value?.trim();
+  const data    = document.getElementById('na-data')?.value;
+  const vendId  = document.getElementById('na-vend')?.value;
+  if (!cliente || !texto || !criado) { toast('Preencha cliente, texto e criado por', 'err'); return; }
+  const vend = vendId ? S.vendedores.find(v=>v.id_vendedor===Number(vendId)) : null;
+  const btn = document.getElementById('na-btn');
+  if(btn){btn.textContent='Salvando...';btn.disabled=true;}
+  await sbInsert('atac_crm_notas', {
+    id_cliente: null,
+    nome_cliente: cliente,
+    tipo, texto,
+    criado_por: criado,
+    data_prevista: data || null,
+    id_vendedor_responsavel: vend?.id_vendedor || null,
+    nome_vendedor_responsavel: vend?.nome_vendedor || null,
+  });
+  toast('Atividade criada!');
+  fecharNovaAtividade();
+  if(btn){btn.textContent='Salvar';btn.disabled=false;}
+  // Recarregar agenda
+  await loadTarefasMes();
+  renderDiaPanel();
+}
+
+async function resolverNotaAgenda(id) {
+  await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
+  toast('✅ Resolvido!');
+  // Atualizar no estado local (sem recarregar tudo)
+  const t = AG.tarefas.find(x=>x.id===id);
+  if(t) t.resolvido = true;
+  renderDiaPanel();
+  // Atualizar alertas se o CRM estiver visível
+  renderAlertasCRM();
+}
+
 
 // Navegar para o cliente na agenda (busca por nome)
 async function selClienteByNome(nome) {
@@ -1535,6 +1760,13 @@ window.gotoTab=gotoTab;
 window.descartarCliente=descartarCliente;
 window.renderAgendaCRM=renderAgendaCRM;
 window.selClienteByNome=selClienteByNome;
+window.navMes=navMes;
+window.selDia=selDia;
+window.abrirNovaAtividade=abrirNovaAtividade;
+window.fecharNovaAtividade=fecharNovaAtividade;
+window.salvarNovaAtividade=salvarNovaAtividade;
+window.resolverNotaAgenda=resolverNotaAgenda;
+window.naoComercialConfig=naoComercialConfig;
 window.applyPeriod=onPeriodChange; // alias para compatibilidade
 window.onPeriodChange=onPeriodChange;
 window.onCustomDate=onCustomDate;
