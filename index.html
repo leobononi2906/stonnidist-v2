@@ -283,6 +283,19 @@ tr.cl:hover td{background:#ffffff06}
 .mres-meta{font-size:11px;color:#64748b;margin-top:2px}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #334155}
 
+/* prospecção geral */
+.prosp-geral-card{display:block;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid #1e293b;cursor:pointer;transition:background .12s}
+.prosp-geral-card:hover{background:#1e293b}
+.prosp-geral-card.sel{background:#1e293b;border-left:3px solid #a78bfa}
+.pg-row1{display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:3px}
+.pg-nome{font-size:13px;font-weight:600;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.pg-meta{font-size:11px;color:#475569;display:flex;justify-content:space-between;margin-top:4px;gap:8px}
+.btn-assumir{font-size:11px;font-weight:600;padding:5px 12px;background:#7c3aed;color:#fff;border-radius:6px;transition:background .15s;flex-shrink:0;margin-top:6px}
+.btn-assumir:hover{background:#6d28d9}
+/* prazo badge */
+.prazo-ok{font-size:10px;background:#05200e;color:#4ade80;border:1px solid #166534;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.prazo-warn{font-size:10px;background:#1c1208;color:#fbbf24;border:1px solid #854d0e;border-radius:999px;padding:1px 7px;white-space:nowrap}
+.prazo-urg{font-size:10px;background:#1c0808;color:#f87171;border:1px solid #991b1b;border-radius:999px;padding:1px 7px;white-space:nowrap}
 /* utils */
 .hidden{display:none!important}
 .empty-msg{text-align:center;padding:32px;color:#475569;font-size:13px}
@@ -401,14 +414,22 @@ tr.cl:hover td{background:#ffffff06}
               <button data-sf="atencao" class="fb" onclick="setSub('atencao')">Atenção</button>
               <button data-sf="em_risco" class="fb" onclick="setSub('em_risco')">Em Risco</button>
             </div>
-            <div id="ctrl-p" class="frow hidden">
-              <button data-psub="todos" class="fb on" onclick="setPSub('todos')">Todos</button>
-              <button data-psub="atencao" class="fb" onclick="setPSub('atencao')">Atenção &gt;30d</button>
-              <select id="psort" onchange="setPSort(this.value)" style="width:auto;font-size:11px;padding:4px 8px;margin-left:auto">
-                <option value="nome_az">Nome A-Z</option>
-                <option value="mais_antigo">Mais antigo</option>
-                <option value="vendedor_az">Vendedor A-Z</option>
-              </select>
+            <!-- sub-abas Prospecção: Minha | Geral -->
+            <div id="ctrl-p" class="hidden" style="display:none;flex-direction:column;gap:6px">
+              <div class="tabs-row">
+                <button data-pt="minha" class="tb-btn on" onclick="setProspTab('minha')" style="font-size:11px;padding:5px 10px">Minha Prospecção</button>
+                <button data-pt="geral" class="tb-btn" onclick="setProspTab('geral')" style="font-size:11px;padding:5px 10px">Geral (sem vendedor)</button>
+              </div>
+              <!-- filtros só para Minha -->
+              <div id="ctrl-pp" class="frow">
+                <button data-psub="todos" class="fb on" onclick="setPSub('todos')">Todos</button>
+                <button data-psub="atencao" class="fb" onclick="setPSub('atencao')">Atenção &gt;30d</button>
+                <select id="psort" onchange="setPSort(this.value)" style="width:auto;font-size:11px;padding:4px 8px;margin-left:auto">
+                  <option value="nome_az">Nome A-Z</option>
+                  <option value="mais_antigo">Mais antigo</option>
+                  <option value="vendedor_az">Vendedor A-Z</option>
+                </select>
+              </div>
             </div>
           </div>
           <!-- Umbler ACIMA da lista -->
