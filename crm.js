@@ -27,7 +27,7 @@ const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
-  notas: [], telefones: [], pedidos: [],
+  notas: [], telefones: [], pedidos: [], vinculosERP: [],  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   subFilter: 'todos',
@@ -324,21 +324,33 @@ async function loadToday() {
   renderAlertasCRM();
 }
 async function loadDetalhe(id) {
-  const [notas,tels,peds]=await Promise.all([
-    sbQ('atac_crm_notas',`select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
-    sbQ('atac_cliente_telefones',`select=*&id_cliente=eq.${id}&order=principal.desc`),
-    sbQ('vw_comercial_docs_faturados',`select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${id}&order=data_faturamento.desc&limit=10`),
+  const [notas, tels, vincErp] = await Promise.all([
+    sbQ('atac_crm_notas', `select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
+    sbQ('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`),
+    sbQ('atac_cliente_vinculos', `select=id,id_cliente_erp,nome_cliente_erp,cnpj_cpf_erp&id_cliente_crm=eq.${id}`),
   ]);
-  S.notas=Array.isArray(notas)?notas:[];
-  // Deduplicar telefones por número — evita duplicatas da tabela
-  const telsArr = Array.isArray(tels)?tels:[];
+  S.notas = Array.isArray(notas) ? notas : [];
+  // Deduplicar telefones por número
+  const telsArr = Array.isArray(tels) ? tels : [];
   const telSeen = new Set();
   S.telefones = telsArr.filter(t => {
     const k = (t.telefone||'').replace(/\D/g,'');
     if(!k || telSeen.has(k)) return false;
     telSeen.add(k); return true;
   });
-  S.pedidos=Array.isArray(peds)?peds:[];
+  S.vinculosERP = Array.isArray(vincErp) ? vincErp : [];
+
+  // Buscar pedidos de TODOS os IDs vinculados (cliente + ERPs vinculados)
+  const todosIds = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
+  const idsParam = todosIds.join(',');
+  const peds = await sbQ('vw_comercial_docs_faturados',
+    `select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc,nome_cliente&tipo_saida=eq.DISTRIBUICAO&id_cliente=in.(${idsParam})&order=data_faturamento.desc&limit=15`);
+  // Deduplicar por id_doc
+  const pedSeen = new Set();
+  S.pedidos = (Array.isArray(peds) ? peds : []).filter(p => {
+    if (!p.id_doc || pedSeen.has(p.id_doc)) return false;
+    pedSeen.add(p.id_doc); return true;
+  });
 }
 
 // Carregar todos os clientes vinculados a um telefone (vínculos múltiplos)
@@ -815,14 +827,45 @@ function renderDrawer(){
         <span style="font-size:11px;color:var(--text-muted)">Vendedor:</span>
         <strong style="font-size:12px;color:var(--text-primary)">${c.nome_vendedor_responsavel?sN(c.nome_vendedor_responsavel):'<em style=\"color:var(--purple);font-style:normal;font-weight:600\">Sem vendedor</em>'}</strong>
         <button onclick="abrirModalVendedor(${c.id_cliente},'${esc(c.nome_cliente)}',${c.id_vendedor_responsavel||'null'})"
-          style="font-size:11px;padding:3px 9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--blue-mid);background:var(--blue-pale);cursor:pointer;font-weight:600;transition:all .15s"
-          onmouseover="this.style.background='var(--blue-dark)';this.style.color='#fff'"
-          onmouseout="this.style.background='var(--blue-pale)';this.style.color='var(--blue-mid)'">
+          style="font-size:11px;padding:3px 9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--blue-mid);background:var(--blue-pale);cursor:pointer;font-weight:600">
           ✎ Alterar
         </button>
         ${!c.nome_vendedor_responsavel?`<button class="btn-assumir" style="padding:3px 9px;font-size:11px" onclick="assumirCliente(${c.id_cliente},'${esc(c.nome_cliente)}')">+ Assumir</button>`:''}
       </div>
+      <!-- Ações do cliente -->
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button onclick="abrirVincularERP(${c.id_cliente},'${esc(c.nome_cliente)}')"
+          style="font-size:11px;font-weight:600;padding:5px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:var(--surface2);cursor:pointer;display:flex;align-items:center;gap:4px">
+          🔗 Vincular ao ERP
+        </button>
+      </div>
     </div>
+
+    <!-- CLIENTES ERP VINCULADOS -->
+    ${S.vinculosERP.length ? `
+    <div>
+      <div class="sec-head" style="margin-bottom:6px">
+        <span class="sec-lbl">🔗 Clientes ERP Vinculados (${S.vinculosERP.length})</span>
+        <button onclick="abrirVincularERP(${c.id_cliente},'${esc(c.nome_cliente)}')" class="link-add">+ Adicionar</button>
+      </div>
+      ${S.vinculosERP.map(v=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:6px;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.nome_cliente_erp||'—'}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:1px">
+              <span>#${v.id_cliente_erp}</span>
+              ${v.cnpj_cpf_erp?`<span style="margin-left:8px">${fmtC(v.cnpj_cpf_erp)}</span>`:''}
+            </div>
+          </div>
+          <button onclick="desvincularERP('${v.id}',${c.id_cliente},'${esc(v.nome_cliente_erp||'')}')"
+            style="font-size:11px;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--red);background:var(--red-bg);cursor:pointer;font-weight:500;flex-shrink:0">
+            ✕ Desvincular
+          </button>
+        </div>`).join('')}
+      <p style="font-size:10px;color:var(--text-muted);margin-top:4px">
+        💡 Pedidos e datas consideram o mais recente entre todos os ERP vinculados
+      </p>
+    </div>` : ''}
 
     <div class="kmini-row">
       <div class="kmini"><div class="l">Faturamento</div><div class="v">${fmt(fat)}</div></div>
@@ -1185,6 +1228,142 @@ async function confirmarVinc(cId,cNome){
     closeVinc();
     if (S.selId) { await loadDetalhe(S.selId); renderDrawer(); }
   }
+}
+
+// ── VINCULAR AO ERP ───────────────────────────────────────────
+function abrirVincularERP(crmId, crmNome) {
+  const m = document.getElementById('modal-vinc-erp');
+  if (!m) return;
+  m.dataset.crmid = crmId;
+  m.dataset.crmnome = crmNome;
+  document.getElementById('erp-title').textContent = `Vincular "${crmNome.split(' ')[0]}" ao ERP`;
+  document.getElementById('erp-search').value = '';
+  document.getElementById('erp-results').innerHTML = '<p class="empty-msg">Digite para buscar...</p>';
+  m.classList.add('open');
+}
+function fecharVincularERP() { document.getElementById('modal-vinc-erp')?.classList.remove('open'); }
+
+async function searchVincERP() {
+  const q = document.getElementById('erp-search')?.value?.trim();
+  if (!q || q.length < 2) return;
+  // Busca na vw_dim_cliente — clientes reais do ERP
+  const data = await sbQ('vw_dim_cliente',
+    `select=id_cliente,nome_cliente,cnpj,cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj.ilike.*${q.replace(/\D/g,'')}*,id_cliente.eq.${isNaN(q)?0:q})&limit=15`);
+  const res = Array.isArray(data) ? data : [];
+  const el = document.getElementById('erp-results');
+  if (!el) return;
+  if (!res.length) { el.innerHTML = '<p class="empty-msg">Nenhum cliente ERP encontrado</p>'; return; }
+  // Mostrar os já vinculados com badge diferente
+  const vincAtual = new Set(S.vinculosERP.map(v => v.id_cliente_erp));
+  el.innerHTML = res.map(c => `
+    <button onclick="confirmarVincERP(${c.id_cliente},'${esc(c.nome_cliente)}','${esc(c.cnpj||c.cpf||'')}')"
+      ${vincAtual.has(c.id_cliente)?'disabled style="opacity:.5;cursor:default"':''}
+      class="mres-btn" style="margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="mres-nome">${c.nome_cliente}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${vincAtual.has(c.id_cliente)?'<span style="font-size:10px;color:var(--green);font-weight:600">✓ Já vinculado</span>':''}
+          <span style="font-size:11px;color:var(--text-muted)">#${c.id_cliente}</span>
+        </div>
+      </div>
+      ${(c.cnpj||c.cpf||c.cidade)?`<div class="mres-meta">${c.cnpj?fmtC(c.cnpj)+' · ':''}${c.cidade||''}${c.uf?' - '+c.uf:''}</div>`:''}
+    </button>`).join('');
+}
+
+async function confirmarVincERP(erpId, erpNome, cnpj) {
+  const m = document.getElementById('modal-vinc-erp');
+  if (!m) return;
+  const crmId = Number(m.dataset.crmid);
+  const crmNome = m.dataset.crmnome;
+
+  // Verificar se já existe
+  if (S.vinculosERP.some(v => v.id_cliente_erp === erpId)) {
+    toast('Já vinculado!', 'err'); return;
+  }
+
+  const btn = document.getElementById('erp-confirmar');
+  // Sem botão de confirmação — o click no item já confirma
+
+  // 1. Auto-insert em atac_clientes se não existe
+  const existe = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${erpId}&limit=1`);
+  if (!Array.isArray(existe) || !existe.length) {
+    const dim = await sbQ('vw_dim_cliente',
+      `select=id_cliente,nome_cliente,cnpj,cpf,telefone1,telefone2,cidade,uf,email,situacao&id_cliente=eq.${erpId}&limit=1`);
+    const d = Array.isArray(dim) ? dim[0] : null;
+    if (d) {
+      await sbInsert('atac_clientes', {
+        id_cliente: d.id_cliente, nome_cliente: d.nome_cliente,
+        cnpj_cpf: d.cnpj||d.cpf||null, telefone1: d.telefone1||null,
+        cidade: d.cidade||null, uf: d.uf||null, email: d.email||null,
+        situacao: d.situacao||'A', origem: 'VINCULO_ERP',
+      });
+    }
+  }
+
+  // 2. Verificar última compra do ERP → determinar destino
+  const lastPed = await sbQ('vw_comercial_docs_faturados',
+    `select=data_faturamento,id_vendedor,nome_vendedor&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${erpId}&order=data_faturamento.desc&limit=1`);
+  const lp = Array.isArray(lastPed) ? lastPed[0] : null;
+  const diasUlt = lp?.data_faturamento ? dias(lp.data_faturamento) : 9999;
+  const isCarteira = diasUlt <= CFG.compra_risco_dias && lp;
+
+  // 3. Salvar vínculo em atac_cliente_vinculos
+  await sbInsert('atac_cliente_vinculos', {
+    id_cliente_crm: crmId,
+    nome_cliente_crm: crmNome,
+    id_cliente_erp: erpId,
+    nome_cliente_erp: erpNome,
+    cnpj_cpf_erp: cnpj || null,
+  });
+
+  // 4. Se carteira, transferir vendedor da última venda
+  if (isCarteira && lp.id_vendedor) {
+    await sbUpsert('atac_cliente_vendedor', {
+      id_cliente: erpId, nome_cliente: erpNome,
+      id_vendedor_responsavel: lp.id_vendedor,
+      nome_vendedor_responsavel: lp.nome_vendedor,
+      atualizado_por: 'VINCULO_ERP',
+    }, 'id_cliente');
+  }
+
+  // 5. Copiar telefones do cliente CRM para o ERP
+  if (S.telefones.length) {
+    for (const t of S.telefones) {
+      await sbInsert('atac_cliente_telefones', {
+        id_cliente: erpId, nome_cliente: erpNome,
+        telefone: t.telefone, descricao: `ERP #${erpId}`,
+        principal: false,
+      });
+    }
+  }
+
+  fecharVincularERP();
+
+  if (isCarteira) {
+    toast(`✅ Vinculado ao ERP → Carteira (${diasUlt}d desde última compra)`);
+  } else {
+    toast(`✅ Vinculado ao ERP → mantido na Prospecção`);
+  }
+
+  // Recarregar detalhe e listas
+  await loadDetalhe(crmId);
+  renderDrawer();
+  await Promise.all([loadCarteira(), loadProspeccao()]);
+  renderLista();
+}
+
+async function desvincularERP(vincId, crmId, erpNome) {
+  if (!confirm(`Desvincular "${erpNome}" deste cliente?\nOs telefones importados deste ERP também serão removidos.`)) return;
+  // Remover vínculo
+  await sbDel('atac_cliente_vinculos', 'id', vincId);
+  // Remover telefones importados deste ERP
+  const sess = (await window.sb.auth.getSession()).data.session;
+  await fetch(`${window.SUPA_URL}/rest/v1/atac_cliente_telefones?id_cliente=eq.${crmId}&descricao=eq.ERP%20%23${vincId}`, {
+    method: 'DELETE', headers: { apikey: window.SUPA_KEY, Authorization: `Bearer ${sess?.access_token||window.SUPA_KEY}` }
+  });
+  toast(`Desvinculado!`);
+  await loadDetalhe(crmId);
+  renderDrawer();
 }
 
 // ── MODAL ALTERAR VENDEDOR ────────────────────────────────────
@@ -1806,3 +1985,11 @@ window.editUV=editUV;
 window.closeUV=closeUV;
 window.saveUV=saveUV;
 window.delUV=delUV;
+window.abrirVincularERP=abrirVincularERP;
+window.fecharVincularERP=fecharVincularERP;
+window.searchVincERP=searchVincERP;
+window.confirmarVincERP=confirmarVincERP;
+window.desvincularERP=desvincularERP;
+window.abrirModalVendedor=abrirModalVendedor;
+window.fecharModalVendedor=fecharModalVendedor;
+window.salvarModalVendedor=salvarModalVendedor;
