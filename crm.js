@@ -1,8 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // STONNI ATACADO — crm.js  (CRM completo)
+// SUPA_URL e SUPA_KEY são declarados no index.html
 // ═══════════════════════════════════════════════════════════
-const SUPA_URL = 'https://vishxwdxqiygbxmtpfoy.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZpc2h4d2R4cWl5Z2J4bXRwZm95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0Njg2MjIsImV4cCI6MjA4ODA0NDYyMn0.J647m3ieDHahNQYBWMRESl0aPFXsT_zt_7ZcDvyB-SA';
 
 // ── ESTADO GLOBAL ──
 const ST = {
