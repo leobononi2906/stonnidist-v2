@@ -1,1064 +1,797 @@
 // ═══════════════════════════════════════════════════════════
-// STONNI ATACADO — crm.js  (CRM completo)
-// SUPA_URL e SUPA_KEY são declarados no index.html
+// STONNI ATACADO — crm.js
+// window.SUPA_URL, window.SUPA_KEY, window.sb  → definidos no index.html
 // ═══════════════════════════════════════════════════════════
 
-// ── ESTADO GLOBAL ──
-const ST = {
-  // filtros
-  dateStart: '', dateEnd: '', vendedorId: null,
-  // dados
+// ── ESTADO ──────────────────────────────────────────────────
+const S = {
+  // período
+  dtStart: '', dtEnd: '',
+  // dados brutos
   docs: [], vendedores: [], dimMap: new Map(),
-  carteiraData: [], prospeccaoData: [],
-  umblerpendentes: [], overdueTasks: new Set(),
-  notas: [], telefones: [], pedidos: [],
   // CRM
-  mainTab: 'carteira', subFilter: 'todos',
-  prospSubTab: 'todos', prospSort: 'nome_az',
-  search: '', selectedId: null, selectedCliente: null, drawerOpen: false,
-  // vendedores expand
-  expandedVendedor: null,
+  carteira: [], prospeccao: [], umbler: [],
+  notas: [], telefones: [], pedidos: [],
+  overdueIds: new Set(),
+  // UI
+  tab: 'crm',           // aba ativa
+  mainTab: 'carteira',  // dentro do CRM
+  subFilter: 'todos',
+  pSub: 'todos',
+  pSort: 'nome_az',
+  search: '',
+  selId: null,
+  selCliente: null,
+  // vendedores expand (aba Vendedores)
+  expandVend: null,
+  // umbler collapsed
+  umblerOpen: true,
 };
 
-// ── PERÍODO PADRÃO: mês atual ──
-function initDates() {
-  const now = new Date();
-  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
-  ST.dateStart = `${y}-${m}-01`;
-  const lastDay = new Date(y, now.getMonth()+1, 0).getDate();
-  ST.dateEnd = `${y}-${m}-${lastDay}`;
-  const sel = document.getElementById('period-select');
-  if (sel) sel.value = 'mes_atual';
-}
-
-// ── FORMATADORES ──
-const fmt = v => v == null ? '—' : new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);
-const fmtK = v => { if (v == null) return '—'; if (Math.abs(v)>=1e6) return `R$${(v/1e6).toFixed(1)}M`; if (Math.abs(v)>=1e3) return `R$${(v/1e3).toFixed(0)}k`; return fmt(v); };
-const fmtDate = d => { if (!d) return '—'; return new Date(d+'T12:00:00').toLocaleDateString('pt-BR'); };
-const fmtDateTime = d => { if (!d) return '—'; const dt = new Date(d); return `${dt.toLocaleDateString('pt-BR')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`; };
-const fmtPhone = p => { if (!p) return '—'; const d = p.replace(/\D/g,''); if(d.length===13)return`+${d.slice(0,2)}(${d.slice(2,4)})${d.slice(4,9)}-${d.slice(9)}`; if(d.length===11)return`(${d.slice(0,2)})${d.slice(2,7)}-${d.slice(7)}`; if(d.length===10)return`(${d.slice(0,2)})${d.slice(2,6)}-${d.slice(6)}`; return p; };
-const fmtCnpj = v => { if (!v) return '—'; const d = v.replace(/\D/g,''); if(d.length===14)return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'); if(d.length===11)return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4'); return v; };
-const shortName = n => { if(!n)return'—'; const p=n.trim().split(' '); if(p.length===1)return p[0]; return`${p[0]} ${p[p.length-1][0]}.`; };
-const daysSince = d => { if(!d)return 9999; return Math.floor((Date.now()-new Date(d+'T12:00:00').getTime())/86400000); };
+// ── FORMATADORES ────────────────────────────────────────────
+const R = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const fmt  = v => (v==null||isNaN(v)) ? '—' : R.format(v);
+const fmtK = v => { if (v==null||isNaN(v)) return '—'; const a=Math.abs(v); if(a>=1e6)return`R$${(v/1e6).toFixed(1)}M`; if(a>=1e3)return`R$${(v/1e3).toFixed(0)}k`; return fmt(v); };
+const fmtD = d => { if(!d)return'—'; return new Date(d.substring(0,10)+'T12:00:00').toLocaleDateString('pt-BR'); };
+const fmtDT= d => { if(!d)return'—'; const dt=new Date(d); return`${dt.toLocaleDateString('pt-BR')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`; };
+const fmtP = p => { if(!p)return'—'; const d=p.replace(/\D/g,''); if(d.length===11)return`(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`; if(d.length===10)return`(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`; return p; };
+const fmtC = v => { if(!v)return'—'; const d=v.replace(/\D/g,''); if(d.length===14)return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'); if(d.length===11)return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4'); return v; };
+const sN   = n => { if(!n)return'—'; const p=n.trim().split(' '); if(p.length===1)return p[0]; return`${p[0]} ${p[p.length-1][0]}.`; };
+const dias = d => { if(!d)return 9999; return Math.floor((Date.now()-new Date(d.substring(0,10)+'T12:00:00').getTime())/86400000); };
 const docFat = d => d?.faturamento_liquido ?? d?.faturamento_doc ?? 0;
 
 function getStatus(c) {
-  const dias = c.dias_sem_compra ?? daysSince(c.ultima_compra) ?? 9999;
-  if (dias < 30) return 'ATIVO';
-  if (dias < 90) return 'ATENCAO';
-  if (dias < 180) return 'PERDIDO';
+  const d = c.dias_sem_compra ?? dias(c.ultima_compra);
+  if (d <  30) return 'ATIVO';
+  if (d <  90) return 'ATENCAO';
+  if (d < 180) return 'PERDIDO';
   return 'PROSPECCAO';
 }
-function statusBadge(s) {
-  const m = { ATIVO:['bg-emerald-500/20 text-emerald-400 border-emerald-500/30','Ativo'], ATENCAO:['bg-yellow-500/20 text-yellow-400 border-yellow-500/30','Atenção'], PERDIDO:['bg-red-500/20 text-red-400 border-red-500/30','Em Risco'], PROSPECCAO:['bg-slate-500/20 text-slate-400 border-slate-500/30','Prospecção'] };
-  const [cls,label] = m[s]||m.PROSPECCAO;
-  return `<span class="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${cls}">${label}</span>`;
+function bdg(s) {
+  const m = {
+    ATIVO:      ['bdg bdg-a','Ativo'],
+    ATENCAO:    ['bdg bdg-t','Atenção'],
+    PERDIDO:    ['bdg bdg-r','Em Risco'],
+    PROSPECCAO: ['bdg bdg-p','Prospecção'],
+  };
+  const [cls,lbl] = m[s]||m.PROSPECCAO;
+  return `<span class="${cls}">${lbl}</span>`;
 }
-function tipoBadge(t) {
-  const m = { OBSERVACAO:'bg-blue-500/20 text-blue-400', TAREFA:'bg-yellow-500/20 text-yellow-400', FOLLOWUP:'bg-purple-500/20 text-purple-400', LIGACAO:'bg-emerald-500/20 text-emerald-400' };
-  return `<span class="rounded-full px-2 py-0.5 text-[10px] font-medium ${m[t]||'bg-slate-500/20 text-slate-400'}">${t}</span>`;
+function tipoBdg(t) {
+  const m = { OBSERVACAO:'bdg-obs', TAREFA:'bdg-tar', FOLLOWUP:'bdg-fol', LIGACAO:'bdg-lig' };
+  return `<span class="bdg-tipo ${m[t]||'bdg-obs'}">${t}</span>`;
 }
 
-// ── SUPABASE FETCH ──
-async function getSess() {
-  const raw = localStorage.getItem('sb-vishxwdxqiygbxmtpfoy-auth-token');
-  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
-async function sbFetch(table, params='') {
-  const sess = await getSess();
+// ── SUPABASE HELPERS ────────────────────────────────────────
+async function sbQ(table, params='') {
+  const sess = window.sb ? (await window.sb.auth.getSession()).data.session : null;
   const token = sess?.access_token || window.SUPA_KEY;
   const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${params}&limit=9999`, {
-    headers: { apikey: window.SUPA_KEY, Authorization:`Bearer ${token}`, 'Content-Type':'application/json' }
+    headers:{ apikey:window.SUPA_KEY, Authorization:`Bearer ${token}`, 'Content-Type':'application/json' }
   });
+  if (!r.ok) { console.error('sbQ error', table, r.status); return []; }
   return r.json();
 }
-async function sbPost(table, body) {
-  const sess = await getSess();
-  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}`, {
+async function sbInsert(table, body) {
+  const sess = (await window.sb.auth.getSession()).data.session;
+  return fetch(`${window.SUPA_URL}/rest/v1/${table}`, {
     method:'POST',
-    headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
-    body:JSON.stringify(body)
+    headers:{ apikey:window.SUPA_KEY, Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`, 'Content-Type':'application/json', Prefer:'return=minimal' },
+    body: JSON.stringify(body)
   });
-  return r;
 }
-async function sbPatch(table, field, val, body) {
-  const sess = await getSess();
-  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
+async function sbUpdate(table, field, val, body) {
+  const sess = (await window.sb.auth.getSession()).data.session;
+  return fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
     method:'PATCH',
-    headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
-    body:JSON.stringify(body)
+    headers:{ apikey:window.SUPA_KEY, Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`, 'Content-Type':'application/json', Prefer:'return=minimal' },
+    body: JSON.stringify(body)
   });
-  return r;
 }
-async function sbDelete(table, field, val) {
-  const sess = await getSess();
-  await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
-    method:'DELETE', headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`}
+async function sbDel(table, field, val) {
+  const sess = (await window.sb.auth.getSession()).data.session;
+  return fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
+    method:'DELETE',
+    headers:{ apikey:window.SUPA_KEY, Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}` }
   });
 }
 
-function toast(msg, type='success') {
+// ── TOAST ────────────────────────────────────────────────────
+function toast(msg, tipo='ok') {
   const el = document.createElement('div');
-  el.className = `fixed bottom-5 right-5 z-[9999] px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-opacity duration-300 ${type==='error'?'bg-red-600':'bg-emerald-600'} text-white`;
+  el.style.cssText = `position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:opacity .3s;background:${tipo==='err'?'#dc2626':'#16a34a'};color:#fff`;
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),300); },2500);
+  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.remove(),300); }, 2500);
 }
 
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 // INIT
-// ════════════════════════════════════════
-async function initCRM() {
-  initDates();
-  buildPeriodOptions();
+// ════════════════════════════════════════════════════════════
+async function init() {
+  initPeriod();
+  // carrega base
   await Promise.all([loadVendedores(), loadDimMap()]);
-  await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmblerPendentes(), loadOverdueTasks()]);
-  await loadTodayTasks();
-  // Abre direto no CRM
-  switchTab('crm');
+  // carrega tudo em paralelo
+  await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmbler(), loadOverdue(), loadToday()]);
+  // mostra CRM direto
+  gotoTab('crm');
 }
 
-function buildPeriodOptions() {
-  const sel = document.getElementById('period-select');
-  if (!sel) return;
+function initPeriod() {
   const now = new Date();
-  const options = [
-    ['mes_atual', 'Mês Atual'],
-    ['mes_anterior', 'Mês Anterior'],
-    ['ultimos_3m', 'Últimos 3 Meses'],
-    ['ultimos_6m', 'Últimos 6 Meses'],
-    ['ano_atual', 'Ano Atual'],
-  ];
-  sel.innerHTML = options.map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+  const y = now.getFullYear(), m = now.getMonth();
+  setRange(new Date(y,m,1), new Date(y,m+1,0));
+  const sel = document.getElementById('period-sel');
+  if (!sel) return;
+  sel.innerHTML = [
+    ['mes_atual','Mês Atual'],
+    ['mes_anterior','Mês Anterior'],
+    ['ult_3m','Últimos 3 Meses'],
+    ['ult_6m','Últimos 6 Meses'],
+    ['ano_atual','Ano Atual'],
+  ].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
   sel.value = 'mes_atual';
 }
 
-function applyPeriod(v) {
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  let start, end;
-  if (v === 'mes_atual') {
-    start = new Date(y, m, 1); end = new Date(y, m+1, 0);
-  } else if (v === 'mes_anterior') {
-    start = new Date(y, m-1, 1); end = new Date(y, m, 0);
-  } else if (v === 'ultimos_3m') {
-    start = new Date(y, m-2, 1); end = new Date(y, m+1, 0);
-  } else if (v === 'ultimos_6m') {
-    start = new Date(y, m-5, 1); end = new Date(y, m+1, 0);
-  } else if (v === 'ano_atual') {
-    start = new Date(y, 0, 1); end = new Date(y, 11, 31);
-  }
-  const pad = n => String(n).padStart(2,'0');
-  ST.dateStart = `${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}`;
-  ST.dateEnd   = `${end.getFullYear()}-${pad(end.getMonth()+1)}-${pad(end.getDate())}`;
-  Promise.all([loadDocs(), loadCarteira(), loadProspeccao()]).then(() => {
-    const active = document.querySelector('[data-tab].tab-active')?.dataset.tab;
-    if (active === 'home') renderHome();
-    if (active === 'vendedores') renderVendedores();
-    if (active === 'crm') renderCRM();
-  });
+function setRange(s, e) {
+  const p = n => String(n).padStart(2,'0');
+  S.dtStart = `${s.getFullYear()}-${p(s.getMonth()+1)}-${p(s.getDate())}`;
+  S.dtEnd   = `${e.getFullYear()}-${p(e.getMonth()+1)}-${p(e.getDate())}`;
 }
 
-// ════════════════════════════════════════
-// LOAD DATA
-// ════════════════════════════════════════
+async function applyPeriod(v) {
+  const n=new Date(), y=n.getFullYear(), m=n.getMonth();
+  if(v==='mes_atual')       setRange(new Date(y,m,1),   new Date(y,m+1,0));
+  else if(v==='mes_anterior')setRange(new Date(y,m-1,1), new Date(y,m,0));
+  else if(v==='ult_3m')     setRange(new Date(y,m-2,1), new Date(y,m+1,0));
+  else if(v==='ult_6m')     setRange(new Date(y,m-5,1), new Date(y,m+1,0));
+  else if(v==='ano_atual')  setRange(new Date(y,0,1),   new Date(y,11,31));
+  await loadDocs();
+  if(S.tab==='home')       renderHome();
+  if(S.tab==='vendedores') renderVendedores();
+}
+
+// ════════════════════════════════════════════════════════════
+// LOAD
+// ════════════════════════════════════════════════════════════
 async function loadVendedores() {
-  const data = await sbFetch('vw_dim_vendedor', 'select=id_vendedor,nome_vendedor,departamento');
-  ST.vendedores = (Array.isArray(data) ? data : []).filter(v => {
-    const d = (v.departamento||'').trim().toUpperCase();
-    return d === 'DISTRIBUIDOR' || d === 'DISTRIBUICAO REPRESENTANTES';
+  const d = await sbQ('vw_dim_vendedor','select=id_vendedor,nome_vendedor,departamento');
+  S.vendedores = (Array.isArray(d)?d:[]).filter(v=>{
+    const dept=(v.departamento||'').trim().toUpperCase();
+    return dept==='DISTRIBUIDOR'||dept==='DISTRIBUICAO REPRESENTANTES';
   });
 }
-
 async function loadDimMap() {
-  const data = await sbFetch('atac_clientes', 'select=id_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
-  ST.dimMap = new Map();
-  if (Array.isArray(data)) data.forEach(d => ST.dimMap.set(d.id_cliente, d));
+  const d = await sbQ('atac_clientes','select=id_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
+  S.dimMap = new Map(); (Array.isArray(d)?d:[]).forEach(r=>S.dimMap.set(r.id_cliente,r));
 }
-
 async function loadDocs() {
-  const params = `select=id_doc,id_vendedor,nome_vendedor,id_cliente,nome_cliente,id_empresa,empresa,data_faturamento,faturamento_doc,faturamento_liquido,margem_doc,margem_liquida,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${ST.dateStart}&data_faturamento=lte.${ST.dateEnd}&order=data_faturamento.desc`;
-  const data = await sbFetch('vw_comercial_docs_faturados', params);
-  // dedup por id_doc
-  const seen = new Set();
-  ST.docs = (Array.isArray(data) ? data : []).filter(d => { if (!d.id_doc || seen.has(d.id_doc)) return false; seen.add(d.id_doc); return true; });
+  const p = `select=id_doc,id_vendedor,nome_vendedor,id_cliente,nome_cliente,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${S.dtStart}&data_faturamento=lte.${S.dtEnd}&order=data_faturamento.desc`;
+  const d = await sbQ('vw_comercial_docs_faturados', p);
+  const seen=new Set();
+  S.docs = (Array.isArray(d)?d:[]).filter(r=>{ if(!r.id_doc||seen.has(r.id_doc))return false; seen.add(r.id_doc); return true; });
 }
-
 async function loadCarteira() {
-  const params = `select=*&order=dias_sem_interacao.desc${ST.vendedorId ? `&id_vendedor_responsavel=eq.${ST.vendedorId}` : ''}`;
-  const data = await sbFetch('atac_crm_clientes', params);
-  ST.carteiraData = (Array.isArray(data) ? data : []).filter(c => getStatus(c) !== 'PROSPECCAO');
+  const d = await sbQ('atac_crm_clientes','select=*&order=dias_sem_interacao.desc.nullslast');
+  S.carteira = (Array.isArray(d)?d:[]).filter(c=>getStatus(c)!=='PROSPECCAO');
 }
-
 async function loadProspeccao() {
-  const params = `select=*&status_crm=eq.PROSPECCAO&order=dias_sem_interacao.desc${ST.vendedorId ? `&id_vendedor_responsavel=eq.${ST.vendedorId}` : ''}`;
-  const data = await sbFetch('atac_crm_clientes', params);
-  ST.prospeccaoData = Array.isArray(data) ? data : [];
+  const d = await sbQ('atac_crm_clientes','select=*&status_crm=eq.PROSPECCAO&order=dias_sem_interacao.desc.nullslast');
+  S.prospeccao = Array.isArray(d)?d:[];
 }
-
-async function loadUmblerPendentes() {
-  const data = await sbFetch('atac_umbler_contatos', 'select=telefone,nome_contato,nome_atendente,ultimo_contato&nao_comercial=eq.false&order=ultimo_contato.desc');
-  if (!Array.isArray(data)) { ST.umblerpendentes = []; return; }
-  const tels = await sbFetch('atac_cliente_telefones', 'select=telefone');
-  const vinculados = new Set(Array.isArray(tels) ? tels.map(t => t.telefone) : []);
-  ST.umblerpendentes = data.filter(c => !vinculados.has(c.telefone));
-}
-
-async function loadOverdueTasks() {
-  const today = new Date().toISOString().split('T')[0];
-  const params = `select=id_cliente&resolvido=eq.false&data_prevista=lt.${today}${ST.vendedorId ? `&id_vendedor_responsavel=eq.${ST.vendedorId}` : ''}`;
-  const data = await sbFetch('atac_crm_notas', params);
-  ST.overdueTasks = new Set(Array.isArray(data) ? data.map(d => d.id_cliente) : []);
-}
-
-async function loadTodayTasks() {
-  const today = new Date().toISOString().split('T')[0];
-  const params = `select=id,tipo,nome_cliente,texto,nome_vendedor_responsavel&resolvido=eq.false&data_prevista=eq.${today}${ST.vendedorId ? `&id_vendedor_responsavel=eq.${ST.vendedorId}` : ''}`;
-  const data = await sbFetch('atac_crm_notas', params);
-  renderTodayPanel(Array.isArray(data) ? data : []);
-}
-
-async function loadClienteDetail(id) {
-  const [notas, tels, pedidos] = await Promise.all([
-    sbFetch('atac_crm_notas', `select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
-    sbFetch('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`),
-    sbFetch('vw_comercial_docs_faturados', `select=data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${id}&order=data_faturamento.desc&limit=10`)
+async function loadUmbler() {
+  const [cts, tels] = await Promise.all([
+    sbQ('atac_umbler_contatos','select=telefone,nome_contato,nome_atendente,ultimo_contato&nao_comercial=eq.false&order=ultimo_contato.desc'),
+    sbQ('atac_cliente_telefones','select=telefone'),
   ]);
-  ST.notas = Array.isArray(notas) ? notas : [];
-  ST.telefones = Array.isArray(tels) ? tels : [];
-  ST.pedidos = Array.isArray(pedidos) ? pedidos : [];
+  const vinc = new Set((Array.isArray(tels)?tels:[]).map(t=>t.telefone));
+  S.umbler = (Array.isArray(cts)?cts:[]).filter(c=>!vinc.has(c.telefone));
+  // atualiza badge sidebar
+  const cnt = S.umbler.length;
+  const el = document.getElementById('umbl-cnt');
+  if(el){ el.textContent=cnt; el.classList.toggle('hidden', cnt===0); }
+}
+async function loadOverdue() {
+  const today = new Date().toISOString().split('T')[0];
+  const d = await sbQ('atac_crm_notas',`select=id_cliente&resolvido=eq.false&data_prevista=lt.${today}`);
+  S.overdueIds = new Set((Array.isArray(d)?d:[]).map(r=>r.id_cliente));
+}
+async function loadToday() {
+  const today = new Date().toISOString().split('T')[0];
+  const d = await sbQ('atac_crm_notas',`select=id,tipo,nome_cliente,texto&resolvido=eq.false&data_prevista=eq.${today}&order=nome_cliente.asc`);
+  renderToday(Array.isArray(d)?d:[]);
+}
+async function loadDetalhe(id) {
+  const [notas, tels, peds] = await Promise.all([
+    sbQ('atac_crm_notas',`select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
+    sbQ('atac_cliente_telefones',`select=*&id_cliente=eq.${id}&order=principal.desc,created_at.asc`),
+    sbQ('vw_comercial_docs_faturados',`select=data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${id}&order=data_faturamento.desc&limit=10`),
+  ]);
+  S.notas     = Array.isArray(notas)?notas:[];
+  S.telefones = Array.isArray(tels)?tels:[];
+  S.pedidos   = Array.isArray(peds)?peds:[];
 }
 
-// ════════════════════════════════════════
-// NAVEGAÇÃO POR ABAS
-// ════════════════════════════════════════
-function switchTab(tab) {
-  document.querySelectorAll('[data-tab]').forEach(el => {
-    const active = el.dataset.tab === tab;
-    el.classList.toggle('tab-active', active);
-    el.classList.toggle('bg-slate-700', active);
-    el.classList.toggle('text-slate-100', active);
-    el.classList.toggle('text-slate-400', !active);
+// ════════════════════════════════════════════════════════════
+// NAVEGAÇÃO
+// ════════════════════════════════════════════════════════════
+function gotoTab(tab) {
+  S.tab = tab;
+  // sidebar
+  ['home','vendedores','crm','config'].forEach(t=>{
+    const si=document.getElementById(`si-${t}`);
+    if(si) si.classList.toggle('on', t===tab);
   });
-  ['home-page','vendedores-page','crm-page','config-page'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('hidden', !id.startsWith(tab));
+  // páginas
+  ['home','vendedores','crm','config'].forEach(t=>{
+    const pg=document.getElementById(`pg-${t}`);
+    if(pg) pg.classList.toggle('on', t===tab);
   });
-  if (tab === 'home') renderHome();
-  if (tab === 'vendedores') renderVendedores();
-  if (tab === 'crm') renderCRM();
-  if (tab === 'config') renderConfig();
+  // período: ocultar no CRM e Config
+  const tp=document.querySelector('.tb-period');
+  if(tp) tp.style.display=(tab==='crm'||tab==='config')?'none':'';
+  // render
+  if(tab==='home')       renderHome();
+  if(tab==='vendedores') renderVendedores();
+  if(tab==='crm')        renderCRM();
+  if(tab==='config')     renderConfig();
 }
 
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 // ABA HOME
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 function renderHome() {
-  const el = document.getElementById('home-page');
-  if (!el) return;
+  const el=document.getElementById('home-body'); if(!el)return;
+  const d=S.docs;
+  const fat=d.reduce((s,r)=>s+docFat(r),0);
+  const ped=new Set(d.map(r=>r.id_doc)).size;
+  const cli=new Set(d.map(r=>r.id_cliente).filter(Boolean)).size;
+  const ticket=ped?fat/ped:0;
 
-  const docs = ST.docs;
-  const fat = docs.reduce((s,d) => s+docFat(d), 0);
-  const ped = new Set(docs.map(d => d.id_doc)).size;
-  const cli = new Set(docs.map(d => d.id_cliente)).size;
-  const ticket = ped ? fat/ped : 0;
-
-  // por canal (DISTRIBUIDOR vs REPRESENTANTE)
-  const vdeptMap = new Map(ST.vendedores.map(v => [v.id_vendedor, (v.departamento||'').trim().toUpperCase()]));
-  let fatDist=0, fatRep=0, pedDist=0, pedRep=0;
-  docs.forEach(d => {
-    const dept = vdeptMap.get(d.id_vendedor)||'';
-    if(dept==='DISTRIBUIDOR'){fatDist+=docFat(d);pedDist++;}
-    else if(dept==='DISTRIBUICAO REPRESENTANTES'){fatRep+=docFat(d);pedRep++;}
-  });
+  // canais
+  const dMap=new Map(S.vendedores.map(v=>[v.id_vendedor,(v.departamento||'').trim().toUpperCase()]));
+  let fDist=0,fRep=0,pDist=0,pRep=0;
+  d.forEach(r=>{ const dp=dMap.get(r.id_vendedor)||''; if(dp==='DISTRIBUIDOR'){fDist+=docFat(r);pDist++;}else if(dp==='DISTRIBUICAO REPRESENTANTES'){fRep+=docFat(r);pRep++;} });
 
   // gráfico diário
-  const dailyMap = new Map();
-  docs.forEach(d => {
-    const dt = (d.data_faturamento||'').split('T')[0];
-    if(dt) dailyMap.set(dt, (dailyMap.get(dt)||0)+docFat(d));
-  });
-  const daily = [...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b));
-  const maxVal = Math.max(...daily.map(([,v])=>v), 1);
+  const dm=new Map(); d.forEach(r=>{ const dt=(r.data_faturamento||'').substring(0,10); if(dt)dm.set(dt,(dm.get(dt)||0)+docFat(r)); });
+  const daily=[...dm.entries()].sort(([a],[b])=>a.localeCompare(b));
+  const maxV=Math.max(...daily.map(([,v])=>v),1);
 
-  // top 10 clientes
-  const cliMap = new Map();
-  docs.forEach(d => {
-    if(!d.id_cliente) return;
-    if(!cliMap.has(d.id_cliente)) cliMap.set(d.id_cliente,{nome:d.nome_cliente,fat:0,ped:0});
-    const c=cliMap.get(d.id_cliente); c.fat+=docFat(d); c.ped++;
-  });
-  const topCli = [...cliMap.values()].sort((a,b)=>b.fat-a.fat).slice(0,10);
+  // top clientes
+  const cm=new Map(); d.forEach(r=>{ if(!r.id_cliente)return; if(!cm.has(r.id_cliente))cm.set(r.id_cliente,{nome:r.nome_cliente,fat:0}); cm.get(r.id_cliente).fat+=docFat(r); });
+  const topCli=[...cm.values()].sort((a,b)=>b.fat-a.fat).slice(0,10);
 
-  // últimos 8 pedidos
-  const ultimosPed = docs.slice(0,8);
-
-  el.innerHTML = `
-    <!-- KPI cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-      ${kpiCard('💰','Faturamento',fmtK(fat),'text-blue-400')}
-      ${kpiCard('🛒','Pedidos',ped,'text-purple-400')}
-      ${kpiCard('👥','Clientes',cli,'text-emerald-400')}
-      ${kpiCard('🎯','Ticket Médio',fmtK(ticket),'text-yellow-400')}
+  el.innerHTML=`
+    <div class="kgrid">
+      ${kc('💰','Faturamento',fmtK(fat),'kc-blue')}
+      ${kc('🛒','Pedidos',ped,'kc-purple')}
+      ${kc('👥','Clientes',cli,'kc-green')}
+      ${kc('🎯','Ticket Médio',fmtK(ticket),'kc-yellow')}
     </div>
-
-    <!-- Canais -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p class="text-xs text-slate-400 mb-1">🏢 Distribuidor (Internos)</p>
-        <p class="text-xl font-bold text-slate-100">${fmtK(fatDist)}</p>
-        <p class="text-xs text-slate-500 mt-0.5">${pedDist} pedidos</p>
+    <div class="cgrid">
+      <div class="ccard"><div class="lbl">🏢 Distribuidor</div><div class="val">${fmtK(fDist)}</div><div class="sub">${pDist} pedidos</div></div>
+      <div class="ccard"><div class="lbl">🤝 Representantes</div><div class="val">${fmtK(fRep)}</div><div class="sub">${pRep} pedidos</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="scard">
+        <div class="scard-title">📈 Faturamento Diário</div>
+        ${daily.length?daily.map(([dt,v])=>`
+          <div class="bar-row">
+            <span class="bar-lbl">${fmtD(dt)}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(v/maxV*100)}%"></div></div>
+            <span class="bar-val">${fmtK(v)}</span>
+          </div>`).join(''):'<p style="color:#475569;font-size:12px">Sem dados no período</p>'}
       </div>
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p class="text-xs text-slate-400 mb-1">🤝 Representantes</p>
-        <p class="text-xl font-bold text-slate-100">${fmtK(fatRep)}</p>
-        <p class="text-xs text-slate-500 mt-0.5">${pedRep} pedidos</p>
+      <div class="scard">
+        <div class="scard-title">🏆 Top 10 Clientes</div>
+        ${topCli.map((c,i)=>`
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:10px;color:#475569;width:14px">${i+1}</span>
+            <span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span>
+            <span style="font-size:12px;font-weight:600;color:#94a3b8;flex-shrink:0">${fmtK(c.fat)}</span>
+          </div>`).join('')||'<p style="color:#475569;font-size:12px">Sem dados</p>'}
       </div>
     </div>
-
-    <!-- Gráfico diário + Top clientes -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-      <!-- Gráfico -->
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p class="text-xs text-slate-400 mb-3">📈 Faturamento Diário</p>
-        ${daily.length ? `
-        <div class="space-y-1">
-          ${daily.map(([dt,v]) => `
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] text-slate-500 w-16 shrink-0">${fmtDate(dt)}</span>
-              <div class="flex-1 bg-slate-700 rounded-full h-1.5">
-                <div class="bg-blue-500 h-1.5 rounded-full" style="width:${Math.round(v/maxVal*100)}%"></div>
-              </div>
-              <span class="text-[10px] text-slate-300 w-14 text-right shrink-0">${fmtK(v)}</span>
-            </div>
-          `).join('')}
-        </div>` : '<p class="text-sm text-slate-500">Sem dados no período</p>'}
-      </div>
-
-      <!-- Top Clientes -->
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-        <p class="text-xs text-slate-400 mb-3">🏆 Top 10 Clientes</p>
-        ${topCli.length ? `
-        <div class="space-y-1.5">
-          ${topCli.map((c,i) => `
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] text-slate-600 w-4">${i+1}</span>
-              <div class="flex-1 min-w-0">
-                <span class="text-xs text-slate-200 truncate block">${c.nome}</span>
-              </div>
-              <span class="text-xs font-medium text-slate-300 shrink-0">${fmtK(c.fat)}</span>
-            </div>
-          `).join('')}
-        </div>` : '<p class="text-sm text-slate-500">Sem dados</p>'}
-      </div>
-    </div>
-
-    <!-- Últimos pedidos -->
-    <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-      <p class="text-xs text-slate-400 mb-3">📦 Últimos Pedidos</p>
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs">
-          <thead>
-            <tr class="border-b border-slate-700 text-slate-500">
-              <th class="pb-2 text-left">Data</th>
-              <th class="pb-2 text-right">Valor</th>
-              <th class="pb-2 text-left pl-3">Cliente</th>
-              <th class="pb-2 text-left pl-3 hidden sm:table-cell">Vendedor</th>
-            </tr>
-          </thead>
+    <div class="scard">
+      <div class="scard-title">📦 Últimos Pedidos</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Data</th><th class="r">Valor</th><th>Cliente</th><th>Vendedor</th></tr></thead>
           <tbody>
-            ${ultimosPed.map(p => `
-              <tr class="border-b border-slate-700/40">
-                <td class="py-2">${fmtDate(p.data_faturamento)}</td>
-                <td class="py-2 text-right font-medium text-slate-200">${fmt(docFat(p))}</td>
-                <td class="py-2 pl-3 text-slate-300 max-w-[150px] truncate">${p.nome_cliente||'—'}</td>
-                <td class="py-2 pl-3 text-slate-400 hidden sm:table-cell">${shortName(p.nome_vendedor)}</td>
-              </tr>
-            `).join('') || `<tr><td colspan="4" class="py-6 text-center text-slate-500">Sem pedidos no período</td></tr>`}
+            ${d.slice(0,10).map(r=>`<tr>
+              <td>${fmtD(r.data_faturamento)}</td>
+              <td class="r" style="font-weight:600">${fmt(docFat(r))}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.nome_cliente||'—'}</td>
+              <td style="color:#64748b">${sN(r.nome_vendedor)}</td>
+            </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:#475569;padding:20px">Sem pedidos</td></tr>'}
           </tbody>
         </table>
       </div>
-    </div>
-  `;
-}
-
-function kpiCard(icon, label, value, colorClass) {
-  return `
-    <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-      <p class="text-[10px] text-slate-500 mb-1">${icon} ${label}</p>
-      <p class="text-lg font-bold ${colorClass}">${value}</p>
     </div>`;
 }
+function kc(ic,lbl,val,cls){ return `<div class="kcard ${cls}"><div class="lbl">${ic} ${lbl}</div><div class="val">${val}</div></div>`; }
 
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 // ABA VENDEDORES
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
 function renderVendedores() {
-  const el = document.getElementById('vendedores-page');
-  if (!el) return;
-
-  const allowedIds = new Set(ST.vendedores.map(v => v.id_vendedor));
-  const vmap = new Map();
-  ST.docs.forEach(d => {
-    if (!allowedIds.has(d.id_vendedor)) return;
-    if (!vmap.has(d.id_vendedor)) vmap.set(d.id_vendedor, { id:d.id_vendedor, nome:d.nome_vendedor||'', fat:0, cli:new Set(), ped:new Set() });
-    const v = vmap.get(d.id_vendedor);
-    v.fat += docFat(d);
-    if(d.id_cliente) v.cli.add(d.id_cliente);
-    if(d.id_doc) v.ped.add(d.id_doc);
+  const el=document.getElementById('vend-body'); if(!el)return;
+  const allowedIds=new Set(S.vendedores.map(v=>v.id_vendedor));
+  const vm=new Map();
+  S.docs.forEach(d=>{
+    if(!allowedIds.has(d.id_vendedor))return;
+    if(!vm.has(d.id_vendedor)) vm.set(d.id_vendedor,{id:d.id_vendedor,nome:d.nome_vendedor||'',fat:0,cli:new Set(),ped:new Set()});
+    const v=vm.get(d.id_vendedor); v.fat+=docFat(d); if(d.id_cliente)v.cli.add(d.id_cliente); if(d.id_doc)v.ped.add(d.id_doc);
   });
+  const vl=[...vm.values()].map(v=>({...v,clientes:v.cli.size,pedidos:v.ped.size,ticket:v.ped.size?v.fat/v.ped.size:0})).sort((a,b)=>b.fat-a.fat);
+  const fatTot=vl.reduce((s,v)=>s+v.fat,0);
+  const maxF=Math.max(...vl.map(v=>v.fat),1);
 
-  const vendedores = [...vmap.values()]
-    .map(v => ({...v, clientes:v.cli.size, pedidos:v.ped.size, ticket: v.ped.size ? v.fat/v.ped.size : 0}))
-    .sort((a,b) => b.fat-a.fat);
+  // saúde carteira
+  const crmH=new Map();
+  S.carteira.forEach(c=>{ const vid=c.id_vendedor_responsavel; if(!vid)return; if(!crmH.has(vid))crmH.set(vid,{a:0,t:0,r:0}); const h=crmH.get(vid); const st=getStatus(c); if(st==='ATIVO')h.a++; else if(st==='ATENCAO')h.t++; else if(st==='PERDIDO')h.r++; });
 
-  const fatTotal = vendedores.reduce((s,v)=>s+v.fat,0);
-  const maxFat = Math.max(...vendedores.map(v=>v.fat),1);
-
-  // saúde carteira por vendedor (de atac_crm_clientes)
-  const crmMap = new Map();
-  ST.carteiraData.forEach(c => {
-    const vid = c.id_vendedor_responsavel;
-    if (!vid) return;
-    if (!crmMap.has(vid)) crmMap.set(vid, {total:0,ativos:0,atencao:0,risco:0});
-    const m = crmMap.get(vid);
-    m.total++;
-    const s = getStatus(c);
-    if(s==='ATIVO')m.ativos++; else if(s==='ATENCAO')m.atencao++; else if(s==='PERDIDO')m.risco++;
-  });
-
-  el.innerHTML = `
-    <!-- KPI resumo -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-      ${kpiCard('💰','Faturamento Total',fmtK(fatTotal),'text-blue-400')}
-      ${kpiCard('👤','Vendedores Ativos',vendedores.length,'text-purple-400')}
-      ${kpiCard('👥','Clientes Únicos',new Set(ST.docs.map(d=>d.id_cliente).filter(Boolean)).size,'text-emerald-400')}
-      ${kpiCard('🛒','Total Pedidos',new Set(ST.docs.map(d=>d.id_doc).filter(Boolean)).size,'text-yellow-400')}
+  el.innerHTML=`
+    <div class="kgrid">
+      ${kc('💰','Faturamento Total',fmtK(fatTot),'kc-blue')}
+      ${kc('👤','Vendedores',vl.length,'kc-purple')}
+      ${kc('👥','Clientes',new Set(S.docs.map(d=>d.id_cliente).filter(Boolean)).size,'kc-green')}
+      ${kc('🛒','Pedidos',new Set(S.docs.map(d=>d.id_doc).filter(Boolean)).size,'kc-yellow')}
     </div>
-
-    <!-- Ranking -->
-    <div class="rounded-xl border border-slate-700 bg-slate-800 p-4">
-      <p class="text-xs text-slate-400 mb-4">🏆 Ranking de Vendedores</p>
-      ${vendedores.length ? `
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-700 text-xs text-slate-500">
-              <th class="pb-2 text-left w-8"></th>
-              <th class="pb-2 text-left">Vendedor</th>
-              <th class="pb-2 text-right">Faturamento</th>
-              <th class="pb-2 text-right hidden sm:table-cell">Clientes</th>
-              <th class="pb-2 text-right hidden sm:table-cell">Pedidos</th>
-              <th class="pb-2 text-right hidden md:table-cell">Ticket</th>
-              <th class="pb-2 w-32 hidden lg:table-cell"></th>
+    <div class="scard">
+      <div class="scard-title">🏆 Ranking de Vendedores</div>
+      ${vl.length?`<div style="overflow-x:auto"><table>
+        <thead><tr><th style="width:24px"></th><th>Vendedor</th><th class="r">Faturamento</th><th class="r">Clientes</th><th class="r">Pedidos</th><th class="r">Ticket</th><th style="width:140px"></th></tr></thead>
+        <tbody id="vend-tbody">
+          ${vl.map((v,i)=>{
+            const h=crmH.get(v.id)||{a:0,t:0,r:0};
+            const exp=S.expandVend===v.id;
+            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+            // top 5 clientes
+            const tcm=new Map(); S.docs.filter(d=>d.id_vendedor===v.id).forEach(d=>{ if(!d.id_cliente)return; if(!tcm.has(d.id_cliente))tcm.set(d.id_cliente,{nome:d.nome_cliente,fat:0}); tcm.get(d.id_cliente).fat+=docFat(d); });
+            const tc=[...tcm.values()].sort((a,b)=>b.fat-a.fat).slice(0,5);
+            return `<tr class="cl" onclick="toggleVend(${v.id})">
+              <td><span style="font-size:11px;color:${exp?'#3b82f6':'#475569'}">${exp?'▼':'▶'}</span></td>
+              <td style="font-weight:600">${sN(v.nome)} ${medal}</td>
+              <td class="r" style="font-weight:700;color:#f1f5f9">${fmtK(v.fat)}</td>
+              <td class="r">${v.clientes}</td>
+              <td class="r">${v.pedidos}</td>
+              <td class="r">${fmtK(v.ticket)}</td>
+              <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat/maxF*100)}%"></div></div></td>
             </tr>
-          </thead>
-          <tbody>
-            ${vendedores.map((v,i) => {
-              const crm = crmMap.get(v.id)||{total:0,ativos:0,atencao:0,risco:0};
-              const expanded = ST.expandedVendedor === v.id;
-              const topCli = ST.docs.filter(d=>d.id_vendedor===v.id).reduce((m,d)=>{
-                const k=d.id_cliente; if(!k) return m;
-                if(!m.has(k)) m.set(k,{nome:d.nome_cliente,fat:0,ped:0,ultima:''});
-                const c=m.get(k); c.fat+=docFat(d); c.ped++; if(d.data_faturamento>c.ultima)c.ultima=d.data_faturamento;
-                return m;
-              }, new Map());
-              const topCliArr=[...topCli.values()].sort((a,b)=>b.fat-a.fat).slice(0,5);
-              return `
-                <tr onclick="toggleVendedor(${v.id})" class="border-b border-slate-700/50 hover:bg-slate-700/30 cursor-pointer">
-                  <td class="py-3 pr-2">
-                    <span class="text-xs ${expanded?'text-blue-400':'text-slate-500'}">${expanded?'▼':'▶'}</span>
-                  </td>
-                  <td class="py-3">
-                    <span class="font-medium text-slate-200">${shortName(v.nome)}</span>
-                    ${i===0?'<span class="ml-1 text-[10px] text-yellow-400">🥇</span>':i===1?'<span class="ml-1 text-[10px] text-slate-400">🥈</span>':i===2?'<span class="ml-1 text-[10px] text-orange-600">🥉</span>':''}
-                  </td>
-                  <td class="py-3 text-right font-semibold text-slate-100">${fmtK(v.fat)}</td>
-                  <td class="py-3 text-right text-slate-400 hidden sm:table-cell">${v.clientes}</td>
-                  <td class="py-3 text-right text-slate-400 hidden sm:table-cell">${v.pedidos}</td>
-                  <td class="py-3 text-right text-slate-400 hidden md:table-cell">${fmtK(v.ticket)}</td>
-                  <td class="py-3 hidden lg:table-cell pl-4">
-                    <div class="w-full bg-slate-700 rounded-full h-1.5">
-                      <div class="bg-blue-500 h-1.5 rounded-full" style="width:${Math.round(v.fat/maxFat*100)}%"></div>
-                    </div>
-                  </td>
-                </tr>
-                ${expanded ? `
-                <tr class="border-b border-slate-700">
-                  <td colspan="7" class="p-0">
-                    <div class="bg-slate-900/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <!-- Saúde carteira -->
-                      <div>
-                        <p class="text-[10px] text-slate-500 uppercase tracking-wide mb-2">Saúde da Carteira</p>
-                        <div class="grid grid-cols-3 gap-2">
-                          <div class="rounded bg-emerald-500/10 border border-emerald-500/20 p-2 text-center">
-                            <p class="text-lg font-bold text-emerald-400">${crm.ativos}</p>
-                            <p class="text-[10px] text-slate-400">Ativos</p>
-                          </div>
-                          <div class="rounded bg-yellow-500/10 border border-yellow-500/20 p-2 text-center">
-                            <p class="text-lg font-bold text-yellow-400">${crm.atencao}</p>
-                            <p class="text-[10px] text-slate-400">Atenção</p>
-                          </div>
-                          <div class="rounded bg-red-500/10 border border-red-500/20 p-2 text-center">
-                            <p class="text-lg font-bold text-red-400">${crm.risco}</p>
-                            <p class="text-[10px] text-slate-400">Em Risco</p>
-                          </div>
-                        </div>
-                      </div>
-                      <!-- Top clientes -->
-                      <div>
-                        <p class="text-[10px] text-slate-500 uppercase tracking-wide mb-2">Top 5 Clientes</p>
-                        <div class="space-y-1">
-                          ${topCliArr.map(c => `
-                            <div class="flex items-center justify-between">
-                              <span class="text-xs text-slate-300 truncate">${c.nome}</span>
-                              <span class="text-xs text-slate-400 shrink-0 ml-2">${fmtK(c.fat)}</span>
-                            </div>
-                          `).join('') || '<p class="text-xs text-slate-500">Sem pedidos</p>'}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                </tr>` : ''}
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : '<p class="text-sm text-slate-500 py-8 text-center">Sem vendedores com dados no período</p>'}
-    </div>
-  `;
+            ${exp?`<tr class="expand-row"><td colspan="7"><div class="expand-inner">
+              <div class="hgrid">
+                <div class="hbox ha"><div class="n">${h.a}</div><div class="l">Ativos</div></div>
+                <div class="hbox ht"><div class="n">${h.t}</div><div class="l">Atenção</div></div>
+                <div class="hbox hr"><div class="n">${h.r}</div><div class="l">Em Risco</div></div>
+              </div>
+              <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Top 5 Clientes</div>
+              ${tc.map(c=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #1e293b">
+                <span style="color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${c.nome}</span>
+                <span style="color:#94a3b8;flex-shrink:0;margin-left:8px">${fmtK(c.fat)}</span>
+              </div>`).join('')||'<p style="color:#475569;font-size:12px">Sem pedidos</p>'}
+            </div></td></tr>`:''}`;
+          }).join('')}
+        </tbody>
+      </table></div>`:'<p style="color:#475569;text-align:center;padding:24px">Sem dados no período</p>'}
+    </div>`;
 }
+function toggleVend(id){ S.expandVend=S.expandVend===id?null:id; renderVendedores(); }
 
-function toggleVendedor(id) {
-  ST.expandedVendedor = ST.expandedVendedor === id ? null : id;
-  renderVendedores();
-}
-
-// ════════════════════════════════════════
-// ABA CRM (lista + drawer)
-// ════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// ABA CRM
+// ════════════════════════════════════════════════════════════
 function renderCRM() {
-  renderTodayPanel_if_needed();
-  renderUmblerPendentes();
+  renderUmbler();
+  renderToday_check();
   renderLista();
 }
 
-function renderTodayPanel_if_needed() {
-  const el = document.getElementById('today-panel');
-  if (!el || el.innerHTML.trim()) return;
-  loadTodayTasks();
+function renderToday_check() {
+  // só renderiza se o painel ainda não foi preenchido
+  const el = document.getElementById('today-wrap');
+  if (el && !el.innerHTML.trim()) loadToday();
 }
 
-function renderTodayPanel(tasks) {
-  const el = document.getElementById('today-panel');
-  if (!el) return;
-  if (!tasks.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `
-    <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 mb-3">
-      <h3 class="text-xs font-bold text-blue-400 mb-2">📋 Atividades de Hoje (${tasks.length})</h3>
-      <div class="space-y-1.5 max-h-36 overflow-y-auto">
-        ${tasks.map(t => `
-          <div class="flex items-center justify-between rounded bg-slate-800 px-2.5 py-2 gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              ${tipoBadge(t.tipo)}
-              <span class="text-sm font-medium text-slate-200 truncate">${t.nome_cliente}</span>
-              <span class="text-xs text-slate-400 truncate hidden sm:inline">${t.texto||''}</span>
-            </div>
-            <button onclick="resolverTarefa('${t.id}')" class="shrink-0 text-xs text-emerald-400 hover:text-emerald-300">✓</button>
-          </div>
-        `).join('')}
+function renderToday(tasks) {
+  const el = document.getElementById('today-wrap'); if(!el)return;
+  if(!tasks.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="today-box">
+    <div class="today-ttl">📋 Atividades de Hoje (${tasks.length})</div>
+    ${tasks.map(t=>`<div class="today-item">
+      <div class="today-left">
+        ${tipoBdg(t.tipo)}
+        <span class="today-nome">${t.nome_cliente}</span>
+        <span class="today-txt">${t.texto||''}</span>
       </div>
-    </div>`;
+      <button class="btn-res" onclick="resolverNota('${t.id}',true)">✓ Resolver</button>
+    </div>`).join('')}
+  </div>`;
 }
 
-function renderUmblerPendentes() {
-  const el = document.getElementById('umbler-pendentes');
-  if (!el) return;
-  if (!ST.umblerpendentes.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `
-    <div class="rounded-lg border border-red-500/20 bg-red-500/5 mb-3">
-      <button onclick="toggleUmbler()" class="w-full flex items-center gap-2 p-3">
-        <span id="umbler-arrow" class="text-red-400 text-sm">▼</span>
-        <span class="text-sm font-bold text-red-400">📲 Contatos Sem Tratativa</span>
-        <span class="ml-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">${ST.umblerpendentes.length}</span>
-      </button>
-      <div id="umbler-list" class="px-3 pb-3 space-y-2">
-        ${ST.umblerpendentes.slice(0,8).map(c => `
-          <div class="rounded-lg bg-slate-800 border border-slate-700 p-2.5">
-            <div class="flex items-start justify-between gap-2">
-              <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-200 truncate">${c.nome_contato||'Sem nome'}</p>
-                <div class="flex gap-2 mt-0.5 flex-wrap">
-                  <span class="text-xs font-mono text-slate-400">${fmtPhone(c.telefone)}</span>
-                  <span class="text-xs text-slate-500">${shortName(c.nome_atendente)}</span>
-                </div>
-              </div>
-              <div class="flex gap-1 shrink-0">
-                <button onclick="openVincularModal('${c.telefone}','${(c.nome_contato||'').replace(/'/g,"\\'")}','${(c.nome_atendente||'').replace(/'/g,"\\'")}')
-" class="text-xs px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">🔗</button>
-                <button onclick="marcarNaoComercial('${c.telefone}')" class="text-xs px-2 py-1 rounded text-red-400 hover:text-red-300">✕</button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>`;
+function renderUmbler() {
+  const el=document.getElementById('umbl-wrap'); if(!el)return;
+  if(!S.umbler.length){ el.innerHTML=''; return; }
+  const open=S.umblerOpen;
+  el.innerHTML=`
+    <div class="umbl-header ${open?'':'collapsed'}" onclick="toggleUmbler()">
+      <span style="font-size:11px;color:#f87171">${open?'▼':'▶'}</span>
+      <span class="umbl-title">📲 Contatos Sem Tratativa</span>
+      <span class="umbl-badge">${S.umbler.length}</span>
+    </div>
+    ${open?`<div class="umbl-body">
+      ${S.umbler.slice(0,8).map(c=>`<div class="umbl-item">
+        <div class="umbl-nome">${c.nome_contato||'Sem nome'}</div>
+        <div class="umbl-info">
+          <span>${fmtP(c.telefone)}</span>
+          <span>${sN(c.nome_atendente)}</span>
+          <span>${fmtDT(c.ultimo_contato)}</span>
+        </div>
+        <div class="umbl-acts">
+          <button class="btn-vinc" onclick="abrirVinc('${c.telefone}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">🔗 Vincular</button>
+          <button class="btn-nc" onclick="naoComercial('${c.telefone}')">✕ Não comercial</button>
+        </div>
+      </div>`).join('')}
+    </div>`:''}`;
 }
-
-let umblerCollapsed = false;
-function toggleUmbler() {
-  umblerCollapsed = !umblerCollapsed;
-  const el = document.getElementById('umbler-list');
-  const arrow = document.getElementById('umbler-arrow');
-  if(el) el.style.display = umblerCollapsed ? 'none' : '';
-  if(arrow) arrow.textContent = umblerCollapsed ? '▶' : '▼';
-}
+function toggleUmbler(){ S.umblerOpen=!S.umblerOpen; renderUmbler(); }
 
 function renderLista() {
-  const el = document.getElementById('crm-lista');
-  if (!el) return;
-  const data = ST.mainTab === 'carteira' ? getCarteiraFiltered() : getProspFiltered();
-  if (!data.length) { el.innerHTML = '<p class="text-sm text-slate-400 text-center py-10">Nenhum cliente encontrado</p>'; return; }
-  el.innerHTML = data.map(c => {
-    const status = getStatus(c);
-    const dim = ST.dimMap.get(c.id_cliente)||{};
-    const overdue = ST.overdueTasks.has(c.id_cliente);
-    const sel = ST.selectedId === c.id_cliente;
-    const diasCompra = c.dias_sem_compra ?? daysSince(c.ultima_compra);
-    return `
-      <button onclick="selectCliente(${c.id_cliente})"
-        class="w-full text-left px-4 py-3 border-b border-slate-700/50 hover:bg-slate-700/40 transition-colors ${sel?'bg-slate-700/60 border-l-2 border-l-blue-500':''}">
-        <div class="flex items-center justify-between mb-0.5">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="text-sm font-semibold text-slate-100 truncate">${c.nome_cliente}</span>
-            ${statusBadge(status)}
-            ${diasCompra>=30?'<span class="text-yellow-500 text-xs shrink-0">⚠</span>':''}
-          </div>
-          ${overdue?'<span class="text-red-400 text-xs shrink-0">🔔</span>':''}
-        </div>
-        <p class="text-xs text-slate-400">${shortName(c.nome_vendedor_responsavel)}</p>
-        <div class="flex items-center justify-between mt-0.5 gap-2">
-          <p class="text-xs text-slate-500 truncate">
-            ${dim.cidade?dim.cidade+(dim.uf?` - ${dim.uf}`:'')+' · ':''}Últ. compra: ${c.ultima_compra?fmtDate(c.ultima_compra):'—'}
-          </p>
-          ${dim.cnpj_cpf?`<span class="text-[10px] text-slate-600 shrink-0 font-mono">${fmtCnpj(dim.cnpj_cpf)}</span>`:''}
-        </div>
-      </button>`;
+  const el=document.getElementById('cl-list'); if(!el)return;
+  const data = S.mainTab==='carteira' ? filteredCarteira() : filteredProsp();
+  if(!data.length){ el.innerHTML='<div class="cl-empty">Nenhum cliente encontrado</div>'; return; }
+  el.innerHTML = data.map(c=>{
+    const st=getStatus(c);
+    const dim=S.dimMap.get(c.id_cliente)||{};
+    const sel=S.selId===c.id_cliente;
+    const dc=c.dias_sem_compra??dias(c.ultima_compra);
+    return `<button class="cl-item${sel?' sel':''}" onclick="selCliente(${c.id_cliente})">
+      <div class="cl-row1">
+        <span class="cl-nome">${c.nome_cliente}</span>
+        ${bdg(st)}
+        ${dc>=30?'<span style="color:#f59e0b;font-size:12px;flex-shrink:0" title="Sem compra há '+dc+' dias">⚠</span>':''}
+        ${S.overdueIds.has(c.id_cliente)?'<span style="color:#ef4444;font-size:12px;flex-shrink:0" title="Tarefa atrasada">🔔</span>':''}
+      </div>
+      <div class="cl-row2">${sN(c.nome_vendedor_responsavel)}</div>
+      <div class="cl-row3">
+        <span class="cl-row3-l">${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:'')+'  ·  ':''}Últ. compra: ${c.ultima_compra?fmtD(c.ultima_compra):'—'}</span>
+        ${dim.cnpj_cpf?`<span class="cl-cnpj">${fmtC(dim.cnpj_cpf)}</span>`:''}
+      </div>
+    </button>`;
   }).join('');
 }
 
-function getCarteiraFiltered() {
-  let data = ST.carteiraData;
-  if (ST.search) {
-    const s = ST.search.toLowerCase();
-    data = data.filter(c => {
-      if((c.nome_cliente||'').toLowerCase().includes(s)) return true;
-      const d = ST.dimMap.get(c.id_cliente)||{};
-      if((d.cidade||'').toLowerCase().includes(s)) return true;
-      if((d.cnpj_cpf||'').replace(/\D/g,'').includes(s.replace(/\D/g,''))) return true;
-      if(String(c.id_cliente).includes(s)) return true;
-      return false;
-    });
-  }
-  if (ST.subFilter !== 'todos') {
-    data = data.filter(c => {
-      const st = getStatus(c);
-      if(ST.subFilter==='ativo') return st==='ATIVO';
-      if(ST.subFilter==='atencao') return st==='ATENCAO';
-      if(ST.subFilter==='em_risco') return st==='PERDIDO';
-      return true;
-    });
-  }
-  return data;
+function filteredCarteira() {
+  let d=S.carteira;
+  if(S.search){ const s=S.search.toLowerCase(); d=d.filter(c=>{ if((c.nome_cliente||'').toLowerCase().includes(s))return true; const dim=S.dimMap.get(c.id_cliente)||{}; return (dim.cidade||'').toLowerCase().includes(s)||(dim.cnpj_cpf||'').replace(/\D/g,'').includes(s.replace(/\D/g,''))||String(c.id_cliente).includes(s); }); }
+  if(S.subFilter!=='todos') d=d.filter(c=>{ const st=getStatus(c); if(S.subFilter==='ativo')return st==='ATIVO'; if(S.subFilter==='atencao')return st==='ATENCAO'; if(S.subFilter==='em_risco')return st==='PERDIDO'; return true; });
+  return d;
+}
+function filteredProsp() {
+  let d=S.prospeccao;
+  if(S.search){ const s=S.search.toLowerCase(); d=d.filter(c=>(c.nome_cliente||'').toLowerCase().includes(s)); }
+  if(S.pSub==='atencao') d=d.filter(c=>(c.dias_sem_interacao||0)>30);
+  return [...d].sort((a,b)=>{ if(S.pSort==='nome_az')return(a.nome_cliente||'').localeCompare(b.nome_cliente||''); if(S.pSort==='mais_antigo')return(b.dias_sem_interacao||0)-(a.dias_sem_interacao||0); if(S.pSort==='vendedor_az')return(a.nome_vendedor_responsavel||'zzz').localeCompare(b.nome_vendedor_responsavel||'zzz'); return 0; });
 }
 
-function getProspFiltered() {
-  let data = ST.prospeccaoData;
-  if (ST.search) {
-    const s = ST.search.toLowerCase();
-    data = data.filter(c => (c.nome_cliente||'').toLowerCase().includes(s));
-  }
-  if (ST.prospSubTab === 'atencao') data = data.filter(c => (c.dias_sem_interacao||0) > 30);
-  return [...data].sort((a,b) => {
-    if(ST.prospSort==='nome_az') return (a.nome_cliente||'').localeCompare(b.nome_cliente||'');
-    if(ST.prospSort==='mais_antigo') return (b.dias_sem_interacao||0)-(a.dias_sem_interacao||0);
-    if(ST.prospSort==='vendedor_az') return (a.nome_vendedor_responsavel||'zzz').localeCompare(b.nome_vendedor_responsavel||'zzz');
-    return 0;
-  });
-}
+// ── Drawer ──────────────────────────────────────────────────
+async function selCliente(id) {
+  S.selId=id;
+  const lista=S.mainTab==='carteira'?S.carteira:S.prospeccao;
+  S.selCliente=lista.find(c=>c.id_cliente===id)||null;
+  renderLista(); // atualiza .sel
 
-// ── Drawer ──
-async function selectCliente(id) {
-  ST.selectedId = id;
-  const lista = ST.mainTab==='carteira' ? ST.carteiraData : ST.prospeccaoData;
-  ST.selectedCliente = lista.find(c => c.id_cliente===id)||null;
-  ST.drawerOpen = true;
-  renderLista();
-  openDrawer();
-  document.getElementById('drawer-content').innerHTML = `<div class="flex items-center justify-center h-40 text-slate-400"><div class="animate-spin text-xl">⟳</div></div>`;
-  document.getElementById('drawer-titulo').textContent = ST.selectedCliente?.nome_cliente||'Ficha';
-  await loadClienteDetail(id);
+  // Abre drawer imediatamente com loading
+  const drawer=document.getElementById('drawer');
+  if(drawer) drawer.classList.add('open');
+  document.getElementById('cd-ph')?.classList.add('hidden');
+  document.getElementById('dw-title').textContent = S.selCliente?.nome_cliente||'Ficha';
+  document.getElementById('dw-wa').style.display='none';
+  document.getElementById('dw-body').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:80px;color:#475569"><span class="spin">⟳</span></div>';
+
+  await loadDetalhe(id);
   renderDrawer();
 }
 
-function openDrawer() {
-  const d = document.getElementById('crm-drawer');
-  if(d){ d.classList.remove('translate-x-full'); d.classList.add('translate-x-0'); }
-  const ph = document.getElementById('drawer-placeholder');
-  if(ph) ph.classList.add('hidden');
-}
 function closeDrawer() {
-  const d = document.getElementById('crm-drawer');
-  if(d){ d.classList.remove('translate-x-0'); d.classList.add('translate-x-full'); }
-  const ph = document.getElementById('drawer-placeholder');
-  if(ph) ph.classList.remove('hidden');
-  ST.drawerOpen = false; ST.selectedId = null; ST.selectedCliente = null;
+  document.getElementById('drawer')?.classList.remove('open');
+  document.getElementById('cd-ph')?.classList.remove('hidden');
+  S.selId=null; S.selCliente=null;
   renderLista();
 }
 
 function renderDrawer() {
-  const el = document.getElementById('drawer-content');
-  if (!el || !ST.selectedCliente) return;
-  const c = ST.selectedCliente;
-  const dim = ST.dimMap.get(c.id_cliente)||{};
-  const status = getStatus(c);
-  const diasCompra = c.dias_sem_compra ?? daysSince(c.ultima_compra);
-  const kpiFat = ST.pedidos.reduce((s,p) => s+docFat(p), 0);
-  const kpiQtd = ST.pedidos.length;
-  const telPrincipal = ST.telefones.find(t=>t.principal) || ST.telefones[0];
-  if (telPrincipal) {
-    const wa = document.getElementById('drawer-whatsapp');
-    if(wa){ wa.href=`https://wa.me/${(telPrincipal.telefone||'').replace(/\D/g,'')}`; wa.classList.remove('hidden'); }
-  }
+  const el=document.getElementById('dw-body'); if(!el||!S.selCliente)return;
+  const c=S.selCliente;
+  const dim=S.dimMap.get(c.id_cliente)||{};
+  const st=getStatus(c);
+  const dc=c.dias_sem_compra??dias(c.ultima_compra);
+  const fat=S.pedidos.reduce((s,p)=>s+docFat(p),0);
+  const qtd=S.pedidos.length;
 
-  el.innerHTML = `
-    <!-- Header -->
+  // WhatsApp — primeiro telefone
+  const telPrinc=S.telefones.find(t=>t.principal)||S.telefones[0];
+  const waEl=document.getElementById('dw-wa');
+  if(telPrinc&&waEl){ waEl.href=`https://wa.me/${(telPrinc.telefone||'').replace(/\D/g,'')}`; waEl.style.display='inline-flex'; }
+
+  el.innerHTML=`
+    <!-- Cabeçalho -->
     <div>
-      <h3 class="text-lg font-bold text-slate-100">${c.nome_cliente}</h3>
-      <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-        ${statusBadge(status)}
-        <span class="text-xs text-slate-400">${diasCompra<9999?diasCompra+' dias sem compra':'Sem compras'}</span>
+      <div class="dc-nome">${c.nome_cliente}</div>
+      <div class="dc-badges">
+        ${bdg(st)}
+        <span style="font-size:11px;color:#64748b">${dc<9999?dc+' dias sem compra':'Sem compras'}</span>
+        ${c.dias_sem_interacao!=null?`<span style="font-size:11px;color:#475569">· ${c.dias_sem_interacao}d sem interação</span>`:''}
       </div>
-      <div class="mt-2 space-y-0.5">
-        ${(dim.cnpj_cpf||c.cnpj_cpf)?`<p class="text-sm font-mono text-slate-300">${fmtCnpj(dim.cnpj_cpf||c.cnpj_cpf)}</p>`:''}
-        ${(dim.cidade||c.cidade)?`<p class="text-sm text-slate-400">${dim.cidade||c.cidade}${(dim.uf||c.uf)?' - '+(dim.uf||c.uf):''}</p>`:''}
-        ${dim.email?`<p class="text-xs text-slate-500">✉ ${dim.email}</p>`:''}
-        <p class="text-xs text-slate-500">Cód. ERP: ${c.id_cliente}</p>
+      <div class="dc-info">
+        ${(dim.cnpj_cpf||c.cnpj_cpf)?`<span style="font-family:monospace">${fmtC(dim.cnpj_cpf||c.cnpj_cpf)}</span>`:''}
+        ${(dim.cidade||c.cidade)?`<span>${dim.cidade||c.cidade}${(dim.uf||c.uf)?' - '+(dim.uf||c.uf):''}</span>`:''}
+        ${dim.email?`<span>✉ ${dim.email}</span>`:''}
+        <span style="color:#334155">Cód. ERP: ${c.id_cliente}</span>
       </div>
-      <p class="text-xs text-slate-400 mt-2">Vendedor: <span class="text-slate-200 font-medium">${shortName(c.nome_vendedor_responsavel)}</span></p>
+      <div class="dc-vendor">
+        Vendedor: <strong>${sN(c.nome_vendedor_responsavel)}</strong>
+      </div>
     </div>
 
     <!-- KPIs -->
-    <div class="grid grid-cols-3 gap-2">
-      <div class="rounded-lg bg-slate-700/50 p-3 text-center">
-        <p class="text-[10px] text-slate-400">Faturamento</p>
-        <p class="text-sm font-bold text-slate-100">${fmt(kpiFat)}</p>
-      </div>
-      <div class="rounded-lg bg-slate-700/50 p-3 text-center">
-        <p class="text-[10px] text-slate-400">Pedidos</p>
-        <p class="text-sm font-bold text-slate-100">${kpiQtd}</p>
-      </div>
-      <div class="rounded-lg bg-slate-700/50 p-3 text-center">
-        <p class="text-[10px] text-slate-400">Ticket Médio</p>
-        <p class="text-sm font-bold text-slate-100">${fmt(kpiQtd?kpiFat/kpiQtd:0)}</p>
-      </div>
+    <div class="kmini-row">
+      <div class="kmini"><div class="l">Faturamento</div><div class="v">${fmt(fat)}</div></div>
+      <div class="kmini"><div class="l">Pedidos</div><div class="v">${qtd}</div></div>
+      <div class="kmini"><div class="l">Ticket Médio</div><div class="v">${fmt(qtd?fat/qtd:0)}</div></div>
     </div>
 
     <!-- Telefones -->
     <div>
-      <div class="flex items-center justify-between mb-2">
-        <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide">📞 Telefones</h4>
-        <button onclick="toggleAddPhone()" class="text-xs text-blue-400 hover:text-blue-300">+ Adicionar</button>
+      <div class="sec-head">
+        <span class="sec-lbl">📞 Telefones</span>
+        <button class="link-add" onclick="togglePhForm()">+ Adicionar</button>
       </div>
-      <div id="phone-form" class="hidden mb-2 space-y-2 rounded-lg border border-slate-700 p-3">
-        <input id="new-phone" placeholder="Telefone" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500" />
-        <input id="new-phone-nome" placeholder="Nome do contato" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500" />
-        <div class="flex gap-2">
-          <button onclick="savePhone(${c.id_cliente},'${c.nome_cliente.replace(/'/g,"\\'")}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded">Salvar</button>
-          <button onclick="toggleAddPhone()" class="text-xs text-slate-400 px-3 py-1.5">Cancelar</button>
+      <div id="ph-form" class="ph-form">
+        <input id="ph-num" placeholder="Telefone" />
+        <input id="ph-nome" placeholder="Nome do contato (opcional)" />
+        <div class="ph-form-btns">
+          <button class="btn-sv" style="padding:7px" onclick="savePhone(${c.id_cliente},'${esc(c.nome_cliente)}')">Salvar</button>
+          <button style="font-size:12px;color:#64748b;padding:7px 10px" onclick="togglePhForm()">Cancelar</button>
         </div>
       </div>
-      <div class="space-y-1">
-        ${ST.telefones.map(t => `
-          <div class="flex items-center justify-between rounded bg-slate-700/50 px-3 py-2 gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="font-mono text-sm text-slate-200">${fmtPhone(t.telefone)}</span>
-              ${t.nome_contato?`<span class="text-xs text-slate-400 truncate">${t.nome_contato}</span>`:''}
-              ${t.principal?'<span class="text-[10px] text-blue-400 bg-blue-500/10 px-1.5 rounded">Principal</span>':''}
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <a href="https://wa.me/${(t.telefone||'').replace(/\D/g,'')}" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-sm">💬</a>
-              <button onclick="deletePhone('${t.id}')" class="text-slate-600 hover:text-red-400 text-xs px-1">✕</button>
-            </div>
+      ${S.telefones.map(t=>`
+        <div class="phone-card">
+          <div class="ph-info">
+            <span class="ph-num">${fmtP(t.telefone)}</span>
+            ${t.nome_contato?`<span class="ph-name">${t.nome_contato}${t.cargo?' · '+t.cargo:''}</span>`:''}
+            ${!t.nome_contato&&t.descricao?`<span class="ph-name">(${t.descricao})</span>`:''}
+            ${t.principal?'<span class="ph-princ">Principal</span>':''}
           </div>
-        `).join('') || '<p class="text-xs text-slate-500">Nenhum telefone</p>'}
-      </div>
+          <div class="ph-acts">
+            <a class="ph-wa" href="https://wa.me/${(t.telefone||'').replace(/\D/g,'')}" target="_blank" title="Abrir WhatsApp">💬</a>
+            <button class="ph-del" onclick="delPhone('${t.id}')" title="Remover">✕</button>
+          </div>
+        </div>`).join('')||'<p style="color:#475569;font-size:12px">Nenhum telefone</p>'}
     </div>
 
     <!-- Últimos Pedidos -->
     <div>
-      <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">📦 Últimos Pedidos</h4>
-      ${ST.pedidos.length ? `
-      <table class="w-full text-xs">
-        <thead><tr class="border-b border-slate-700 text-slate-500"><th class="pb-1.5 text-left">Data</th><th class="pb-1.5 text-right">Valor</th><th class="pb-1.5 text-right">Itens</th></tr></thead>
+      <div class="sec-head"><span class="sec-lbl">📦 Últimos Pedidos</span></div>
+      ${S.pedidos.length?`<table>
+        <thead><tr><th>Data</th><th class="r">Valor</th><th class="r">Itens</th></tr></thead>
         <tbody>
-          ${ST.pedidos.map(p => `
-            <tr class="border-b border-slate-700/30">
-              <td class="py-1.5">${fmtDate(p.data_faturamento)}</td>
-              <td class="py-1.5 text-right">${fmt(docFat(p))}</td>
-              <td class="py-1.5 text-right">${p.qtd_itens_doc||0}</td>
-            </tr>
-          `).join('')}
+          ${S.pedidos.map(p=>`<tr>
+            <td>${fmtD(p.data_faturamento)}</td>
+            <td class="r">${fmt(docFat(p))}</td>
+            <td class="r">${p.qtd_itens_doc||0}</td>
+          </tr>`).join('')}
         </tbody>
-      </table>` : '<p class="text-xs text-slate-500">Sem pedidos no histórico</p>'}
+      </table>`:'<p style="color:#475569;font-size:12px">Sem pedidos no histórico</p>'}
     </div>
 
-    <!-- Notas -->
+    <!-- Notas / Tarefas -->
     <div>
-      <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">📝 Tarefas e Notas</h4>
-      <div class="space-y-2 max-h-72 overflow-y-auto">
-        ${ST.notas.map(n => `
-          <div class="rounded-lg border ${n.resolvido?'border-slate-700/30 opacity-50':'border-slate-700'} p-3">
-            <div class="flex items-center justify-between mb-1.5">
-              <div class="flex items-center gap-2">
-                ${tipoBadge(n.tipo)}
-                <span class="text-[10px] text-slate-500">${fmtDate(n.data_criacao)}${n.criado_por?' · '+n.criado_por:''}</span>
+      <div class="sec-head"><span class="sec-lbl">📝 Tarefas e Notas</span></div>
+      <div style="max-height:300px;overflow-y:auto">
+        ${S.notas.map(n=>`
+          <div class="nota-card${n.resolvido?' done':''}">
+            <div class="nc-head">
+              <div style="display:flex;align-items:center;gap:6px">
+                ${tipoBdg(n.tipo)}
+                <span class="nc-meta">${fmtD(n.data_criacao)}${n.criado_por?' · '+n.criado_por:''}</span>
               </div>
-              ${!n.resolvido?`<button onclick="resolverTarefa('${n.id}')" class="text-xs text-emerald-400 hover:text-emerald-300">✓ Resolver</button>`:'<span class="text-[10px] text-slate-600">Resolvido</span>'}
+              ${!n.resolvido?`<button class="btn-res" onclick="resolverNota('${n.id}',false)">✓ Resolver</button>`:'<span style="font-size:10px;color:#334155">Resolvido</span>'}
             </div>
-            <p class="text-sm text-slate-200">${n.texto}</p>
-            ${n.data_prevista?`<p class="text-[10px] text-slate-500 mt-1">📅 ${fmtDate(n.data_prevista)}</p>`:''}
-          </div>
-        `).join('') || '<p class="text-xs text-slate-500">Nenhuma nota</p>'}
+            <p class="nc-txt">${n.texto}</p>
+            ${n.data_prevista?`<p class="nc-date">📅 Prevista: ${fmtD(n.data_prevista)}</p>`:''}
+          </div>`).join('')||'<p style="color:#475569;font-size:12px">Nenhuma nota</p>'}
       </div>
     </div>
 
-    <!-- Novo registro -->
-    <div class="rounded-lg border border-slate-700 p-4 space-y-3">
-      <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Novo Registro</h4>
-      <div class="flex gap-2">
-        <select id="nota-tipo" onchange="toggleDataField()" class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100">
+    <!-- Novo Registro -->
+    <div class="note-box">
+      <h4>Novo Registro</h4>
+      <div class="row2">
+        <select id="nota-tipo" onchange="toggleNotaDate()">
           <option value="OBSERVACAO">Observação</option>
           <option value="TAREFA">Tarefa</option>
           <option value="FOLLOWUP">Follow-up</option>
           <option value="LIGACAO">Ligação</option>
         </select>
-        <input id="nota-criado" placeholder="Criado por" class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500" />
+        <input id="nota-criado" placeholder="Criado por" />
       </div>
-      <textarea id="nota-texto" placeholder="Texto da nota..." rows="3" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 resize-none"></textarea>
-      <input id="nota-data" type="date" class="hidden w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100" />
-      <button onclick="salvarNota(${c.id_cliente},'${c.nome_cliente.replace(/'/g,"\\'")}',${c.id_vendedor_responsavel||'null'},'${(c.nome_vendedor_responsavel||'').replace(/'/g,"\\'")}')
-" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded-lg">Salvar</button>
+      <textarea id="nota-texto" rows="3" placeholder="Texto da nota..."></textarea>
+      <input id="nota-data" type="date" style="display:none" />
+      <button class="btn-sv" onclick="salvarNota(${c.id_cliente},'${esc(c.nome_cliente)}',${c.id_vendedor_responsavel||'null'},'${esc(c.nome_vendedor_responsavel||'')}')">Salvar</button>
     </div>
   `;
 }
 
-function toggleDataField() {
-  const tipo = document.getElementById('nota-tipo')?.value;
-  const el = document.getElementById('nota-data');
-  if(el) el.classList.toggle('hidden', !['TAREFA','FOLLOWUP'].includes(tipo));
+function toggleNotaDate(){
+  const t=document.getElementById('nota-tipo')?.value;
+  const d=document.getElementById('nota-data');
+  if(d) d.style.display=['TAREFA','FOLLOWUP'].includes(t)?'':'none';
 }
 
-// ════════════════════════════════════════
-// ABA CONFIGURAÇÕES
-// ════════════════════════════════════════
-function renderConfig() {
-  const el = document.getElementById('config-page');
-  if (!el) return;
-  el.innerHTML = `
-    <div class="max-w-lg space-y-4">
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <h3 class="text-sm font-bold text-slate-200 mb-4">⚙️ Configurações do CRM</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="text-xs text-slate-400 block mb-1">Dias para status ATENÇÃO</label>
-            <input type="number" value="30" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100" />
-          </div>
-          <div>
-            <label class="text-xs text-slate-400 block mb-1">Dias para status EM RISCO</label>
-            <input type="number" value="90" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100" />
-          </div>
-          <div>
-            <label class="text-xs text-slate-400 block mb-1">Dias para PROSPECÇÃO (perde carteira)</label>
-            <input type="number" value="180" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100" />
-          </div>
-          <p class="text-xs text-slate-500">⚠ Configuração dinâmica via tabela <code>atac_crm_config</code> — em breve</p>
-        </div>
+// ════════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════════
+function renderConfig(){
+  const el=document.getElementById('cfg-body'); if(!el)return;
+  el.innerHTML=`<div style="max-width:520px">
+    <div class="scard" style="margin-bottom:16px">
+      <div class="scard-title">⚙️ Parâmetros CRM</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div><label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Dias → Status ATENÇÃO</label><input type="number" value="30" /></div>
+        <div><label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Dias → Status EM RISCO</label><input type="number" value="90" /></div>
+        <div><label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Dias → PROSPECÇÃO</label><input type="number" value="180" /></div>
+        <p style="font-size:11px;color:#475569">⚠ Configuração via tabela <code>atac_crm_config</code> — em breve</p>
       </div>
-
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <h3 class="text-sm font-bold text-slate-200 mb-4">🔗 Integrações</h3>
-        <div class="space-y-3">
-          <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50 border border-slate-600">
-            <div>
-              <p class="text-sm text-slate-200 font-medium">Umbler Talk (WhatsApp)</p>
-              <p class="text-xs text-slate-400">Edge Function UMBLERATC v69</p>
-            </div>
-            <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-2 py-0.5">Ativo</span>
-          </div>
-          <div class="flex items-center justify-between p-3 rounded-lg bg-slate-700/50 border border-slate-600">
-            <div>
-              <p class="text-sm text-slate-200 font-medium">ERP Firebird → Supabase</p>
-              <p class="text-xs text-slate-400">Sync automático a cada hora</p>
-            </div>
-            <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-2 py-0.5">Ativo</span>
-          </div>
+    </div>
+    <div class="scard" style="margin-bottom:16px">
+      <div class="scard-title">🔗 Integrações</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:8px">
+          <div><p style="font-size:13px;font-weight:600;color:#e2e8f0">Umbler Talk (WhatsApp)</p><p style="font-size:11px;color:#64748b">Edge Function UMBLERATC</p></div>
+          <span style="font-size:10px;background:#05200e;color:#4ade80;border:1px solid #166534;border-radius:999px;padding:2px 8px">Ativo</span>
         </div>
-      </div>
-
-      <div class="rounded-xl border border-slate-700 bg-slate-800 p-5">
-        <h3 class="text-sm font-bold text-slate-200 mb-3">ℹ️ Sobre</h3>
-        <div class="text-xs text-slate-400 space-y-1">
-          <p>App: Stonni Atacado CRM v2.0</p>
-          <p>Supabase: vishxwdxqiygbxmtpfoy</p>
-          <p>Deploy: Vercel → <a href="https://stonnidist-v2.vercel.app" class="text-blue-400 hover:underline">stonnidist-v2.vercel.app</a></p>
-          <p>Hub: <a href="https://bononi-hub.vercel.app" class="text-blue-400 hover:underline">bononi-hub.vercel.app</a></p>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:8px">
+          <div><p style="font-size:13px;font-weight:600;color:#e2e8f0">ERP Firebird → Supabase</p><p style="font-size:11px;color:#64748b">Sync automático</p></div>
+          <span style="font-size:10px;background:#05200e;color:#4ade80;border:1px solid #166534;border-radius:999px;padding:2px 8px">Ativo</span>
         </div>
       </div>
     </div>
-  `;
+    <div class="scard">
+      <div class="scard-title">ℹ️ Sobre</div>
+      <div style="font-size:12px;color:#64748b;display:flex;flex-direction:column;gap:4px">
+        <p>Stonni Atacado CRM v2.1</p>
+        <p>Supabase: vishxwdxqiygbxmtpfoy</p>
+        <p>Hub: <a href="https://bononi-hub.vercel.app" style="color:#3b82f6">bononi-hub.vercel.app</a></p>
+      </div>
+    </div>
+  </div>`;
 }
 
-// ════════════════════════════════════════
-// ACTIONS
-// ════════════════════════════════════════
-async function resolverTarefa(id) {
-  await sbPatch('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
+// ════════════════════════════════════════════════════════════
+// AÇÕES
+// ════════════════════════════════════════════════════════════
+async function resolverNota(id, isToday) {
+  await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
   toast('Resolvido!');
-  await loadTodayTasks();
-  if (ST.selectedId) { await loadClienteDetail(ST.selectedId); renderDrawer(); }
-  await loadOverdueTasks(); renderLista();
+  await Promise.all([loadToday(), loadOverdue()]);
+  if(S.selId){ await loadDetalhe(S.selId); renderDrawer(); }
+  renderLista();
 }
 
-async function salvarNota(cId, cNome, vId, vNome) {
-  const tipo = document.getElementById('nota-tipo')?.value;
-  const texto = document.getElementById('nota-texto')?.value?.trim();
-  const criado = document.getElementById('nota-criado')?.value?.trim();
-  const data = document.getElementById('nota-data')?.value;
-  if (!texto || !criado) { toast('Preencha texto e criado por','error'); return; }
-  if (['TAREFA','FOLLOWUP'].includes(tipo) && !data) { toast('Informe a data prevista','error'); return; }
-  await sbPost('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null});
+async function salvarNota(cId,cNome,vId,vNome){
+  const tipo=document.getElementById('nota-tipo')?.value;
+  const texto=document.getElementById('nota-texto')?.value?.trim();
+  const criado=document.getElementById('nota-criado')?.value?.trim();
+  const data=document.getElementById('nota-data')?.value;
+  if(!texto||!criado){ toast('Preencha texto e criado por','err'); return; }
+  if(['TAREFA','FOLLOWUP'].includes(tipo)&&!data){ toast('Informe a data prevista','err'); return; }
+  await sbInsert('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null});
   toast('Registro salvo!');
-  await loadClienteDetail(cId); renderDrawer();
+  await loadDetalhe(cId); renderDrawer();
 }
 
-function toggleAddPhone() { document.getElementById('phone-form')?.classList.toggle('hidden'); }
-
-async function savePhone(cId, cNome) {
-  const tel = document.getElementById('new-phone')?.value?.trim();
-  const nome = document.getElementById('new-phone-nome')?.value?.trim();
-  if (!tel) { toast('Informe o telefone','error'); return; }
-  await sbPost('atac_cliente_telefones',{id_cliente:cId,nome_cliente:cNome,telefone:tel,nome_contato:nome||null,principal:false});
+function togglePhForm(){
+  const f=document.getElementById('ph-form'); if(f) f.classList.toggle('open');
+}
+async function savePhone(cId,cNome){
+  const tel=document.getElementById('ph-num')?.value?.trim();
+  const nome=document.getElementById('ph-nome')?.value?.trim();
+  if(!tel){ toast('Informe o telefone','err'); return; }
+  await sbInsert('atac_cliente_telefones',{id_cliente:cId,nome_cliente:cNome,telefone:tel,nome_contato:nome||null,principal:false});
   toast('Telefone adicionado!');
-  await loadClienteDetail(cId); renderDrawer();
+  await loadDetalhe(cId); renderDrawer();
 }
-
-async function deletePhone(id) {
-  if (!confirm('Remover telefone?')) return;
-  await sbDelete('atac_cliente_telefones','id',id);
+async function delPhone(id){
+  if(!confirm('Remover telefone?'))return;
+  await sbDel('atac_cliente_telefones','id',id);
   toast('Removido!');
-  await loadClienteDetail(ST.selectedId); renderDrawer();
+  await loadDetalhe(S.selId); renderDrawer();
 }
 
-async function marcarNaoComercial(tel) {
-  const motivo = prompt('Motivo:');
-  if (!motivo?.trim()) return;
-  await sbPatch('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:motivo});
+async function naoComercial(tel){
+  const motivo=prompt('Motivo (obrigatório):');
+  if(!motivo?.trim())return;
+  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:motivo});
   toast('Marcado como não comercial');
-  await loadUmblerPendentes(); renderUmblerPendentes();
+  await loadUmbler(); renderUmbler();
 }
 
-// ── Modal vincular ──
-function openVincularModal(tel, nome, atend) {
-  const m = document.getElementById('modal-vincular');
-  if (!m) return;
-  m.dataset.telefone=tel; m.dataset.nome=nome; m.dataset.atendente=atend;
-  m.classList.remove('hidden');
-  document.getElementById('vincular-search').value='';
-  document.getElementById('vincular-results').innerHTML='<p class="text-xs text-slate-500 text-center py-3">Digite para buscar...</p>';
+// modal vincular
+function abrirVinc(tel,nome,atend){
+  const m=document.getElementById('modal-vinc'); if(!m)return;
+  m.dataset.tel=tel; m.dataset.nome=nome; m.dataset.atend=atend;
+  m.classList.add('open');
+  document.getElementById('vinc-search').value='';
+  document.getElementById('vinc-results').innerHTML='<p class="empty-msg">Digite para buscar...</p>';
 }
-function closeVincularModal() { document.getElementById('modal-vincular')?.classList.add('hidden'); }
+function closeVinc(){ document.getElementById('modal-vinc')?.classList.remove('open'); }
 
-async function searchVincular() {
-  const q = document.getElementById('vincular-search')?.value?.trim();
-  if (!q || q.length<2) return;
-  const data = await sbFetch('atac_clientes', `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${q.replace(/\D/g,'')}*)`);
-  const results = Array.isArray(data) ? data.slice(0,10) : [];
-  const el = document.getElementById('vincular-results');
-  if(!el) return;
-  el.innerHTML = results.length ? results.map(c => `
-    <button onclick="confirmarVincular(${c.id_cliente},'${(c.nome_cliente||'').replace(/'/g,"\\'")}')
-"
-      class="w-full text-left px-3 py-2 rounded hover:bg-slate-700/50 text-sm border border-slate-700/30 mb-1">
-      <div class="flex items-center justify-between">
-        <span class="font-medium text-slate-200">${c.nome_cliente}</span>
-        <span class="text-xs text-slate-500">#${c.id_cliente}</span>
-      </div>
-      ${c.cidade?`<p class="text-xs text-slate-500">${c.cidade}${c.uf?' - '+c.uf:''}</p>`:''}
-    </button>
-  `).join('') : '<p class="text-xs text-slate-500 text-center py-3">Nenhum cliente encontrado</p>';
+async function searchVinc(){
+  const q=document.getElementById('vinc-search')?.value?.trim(); if(!q||q.length<2)return;
+  const d=await sbQ('atac_clientes',`select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${q.replace(/\D/g,'')}*)`);
+  const res=Array.isArray(d)?d.slice(0,12):[];
+  const el=document.getElementById('vinc-results'); if(!el)return;
+  el.innerHTML=res.length?res.map(c=>`<button class="mres-btn" onclick="confirmarVinc(${c.id_cliente},'${esc(c.nome_cliente)}')">
+    <div class="mres-nome">${c.nome_cliente}</div>
+    ${(c.cnpj_cpf||c.cidade)?`<div class="mres-meta">${c.cnpj_cpf?fmtC(c.cnpj_cpf)+' · ':''}${c.cidade||''}</div>`:''}
+  </button>`).join(''):'<p class="empty-msg">Nenhum cliente encontrado</p>';
 }
-
-async function confirmarVincular(cId, cNome) {
-  const m = document.getElementById('modal-vincular');
-  if (!m) return;
-  const tel = m.dataset.telefone;
-  await sbPost('atac_cliente_telefones',{id_cliente:cId,nome_cliente:cNome,telefone:tel,descricao:'Umbler',principal:true});
+async function confirmarVinc(cId,cNome){
+  const m=document.getElementById('modal-vinc'); if(!m)return;
+  const tel=m.dataset.tel;
+  await sbInsert('atac_cliente_telefones',{id_cliente:cId,nome_cliente:cNome,telefone:tel,descricao:'Umbler',principal:true});
   toast(`Vinculado → ${cNome}`);
-  closeVincularModal();
-  await Promise.all([loadUmblerPendentes(), loadCarteira(), loadProspeccao()]);
-  renderCRM();
+  closeVinc();
+  await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
+  renderUmbler(); renderLista();
 }
 
-// ── Controles UI ──
-function setMainTab(tab) {
-  ST.mainTab=tab; ST.selectedId=null; ST.drawerOpen=false;
+// ── Controles UI ────────────────────────────────────────────
+function setMainTab(tab){
+  S.mainTab=tab; S.selId=null; S.selCliente=null;
   closeDrawer();
-  ['tab-carteira','tab-prospeccao'].forEach(id => {
-    const el=document.getElementById(id); if(!el) return;
-    const act=id===`tab-${tab}`;
-    el.className=`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${act?'bg-blue-600 text-white':'text-slate-400 hover:text-slate-200 hover:bg-slate-700'}`;
-  });
-  const pc=document.getElementById('prosp-controls'), cc=document.getElementById('cart-controls');
-  if(pc) pc.style.display=tab==='prospeccao'?'':'none';
-  if(cc) cc.style.display=tab==='carteira'?'':'none';
+  document.getElementById('tab-c')?.classList.toggle('on', tab==='carteira');
+  document.getElementById('tab-p')?.classList.toggle('on', tab==='prospeccao');
+  document.getElementById('ctrl-c')?.classList.toggle('hidden', tab!=='carteira');
+  document.getElementById('ctrl-p')?.classList.toggle('hidden', tab!=='prospeccao');
   renderLista();
 }
-
-function setSubFilter(f) {
-  ST.subFilter=f;
-  document.querySelectorAll('[data-subflt]').forEach(el => {
-    const act=el.dataset.subflt===f;
-    el.className=`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${act?'bg-blue-500/20 text-blue-400':'text-slate-400 hover:text-slate-200'}`;
-  });
+function setSub(f){
+  S.subFilter=f;
+  document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));
   renderLista();
 }
-function setProspSub(s) { ST.prospSubTab=s; renderLista(); }
-function setProspSort(s) { ST.prospSort=s; renderLista(); }
-function handleSearch(v) { ST.search=v; renderLista(); }
+function setPSub(v){ S.pSub=v; document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v)); renderLista(); }
+function setPSort(v){ S.pSort=v; renderLista(); }
+function handleSearch(v){ S.search=v; renderLista(); }
 
-// ── Exports ──
-window.CRMModule = { init: initCRM };
-window.switchTab = switchTab;
+// helper escape para strings em onclick
+function esc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ── EXPORT ──────────────────────────────────────────────────
+window.APP = { init };
+window.gotoTab = gotoTab;
 window.applyPeriod = applyPeriod;
-window.toggleVendedor = toggleVendedor;
-window.selectCliente = selectCliente;
-window.closeDrawer = closeDrawer;
 window.setMainTab = setMainTab;
-window.setSubFilter = setSubFilter;
-window.setProspSub = setProspSub;
-window.setProspSort = setProspSort;
+window.setSub = setSub;
+window.setPSub = setPSub;
+window.setPSort = setPSort;
 window.handleSearch = handleSearch;
-window.resolverTarefa = resolverTarefa;
+window.toggleVend = toggleVend;
+window.selCliente = selCliente;
+window.closeDrawer = closeDrawer;
+window.resolverNota = resolverNota;
 window.salvarNota = salvarNota;
-window.toggleAddPhone = toggleAddPhone;
+window.togglePhForm = togglePhForm;
 window.savePhone = savePhone;
-window.deletePhone = deletePhone;
-window.marcarNaoComercial = marcarNaoComercial;
-window.openVincularModal = openVincularModal;
-window.closeVincularModal = closeVincularModal;
-window.searchVincular = searchVincular;
-window.confirmarVincular = confirmarVincular;
+window.delPhone = delPhone;
+window.naoComercial = naoComercial;
+window.abrirVinc = abrirVinc;
+window.closeVinc = closeVinc;
+window.searchVinc = searchVinc;
+window.confirmarVinc = confirmarVinc;
 window.toggleUmbler = toggleUmbler;
-window.toggleDataField = toggleDataField;
+window.toggleNotaDate = toggleNotaDate;
