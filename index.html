@@ -449,9 +449,6 @@ input,select,textarea { width:100%; }
         <span id="umbl-cnt" class="nav-badge hidden">0</span>
       </div>
       <div class="nav-separator"></div>
-      <div class="nav-item" id="si-agenda" onclick="gotoTab('agenda')">
-        <span class="nav-icon">📋</span> Agenda
-      </div>
       <div class="nav-item" id="si-config" onclick="gotoTab('config')">
         <span class="nav-icon">⚙️</span> Configurações
       </div>
@@ -529,7 +526,11 @@ input,select,textarea { width:100%; }
 
       <!-- CRM -->
       <div id="pg-crm" class="pg-crm active">
-        <div class="crm-wrap">
+        <div class="crm-wrap" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+          <!-- agenda inline panel -->
+          <div id="crm-agenda-panel" style="display:none;flex:1;overflow:hidden;flex-direction:column"></div>
+          <!-- inner wrap: lista + drawer (oculto quando agenda ativa) -->
+          <div id="crm-inner-wrap" style="display:flex;flex:1;overflow:hidden">
 
           <!-- Lista esquerda -->
           <div class="cl-panel">
@@ -541,6 +542,7 @@ input,select,textarea { width:100%; }
               <div class="tabs-row">
                 <button id="tab-c" class="tb-btn on" onclick="setMainTab('carteira')">Carteira</button>
                 <button id="tab-p" class="tb-btn" onclick="setMainTab('prospeccao')">Prospecção</button>
+                <button id="tab-a" class="tb-btn" onclick="setMainTab('agenda')">📋 Agenda</button>
               </div>
               <div id="ctrl-c" class="frow">
                 <button data-sf="todos" class="fb on" onclick="setSub('todos')">Todos</button>
@@ -595,9 +597,6 @@ input,select,textarea { width:100%; }
           </div>
         </div>
       </div>
-
-      <!-- AGENDA -->
-      <div id="pg-agenda" class="pg"></div>
 
       <!-- CONFIG -->
       <div id="pg-config" class="pg"><div id="cfg-body"></div></div>
@@ -687,6 +686,29 @@ input,select,textarea { width:100%; }
     <div class="modal-footer">
       <button class="btn-sm" onclick="fecharNovoContato()">Cancelar</button>
       <button id="nc-btn" class="btn-sv" style="width:auto;padding:8px 20px" onclick="salvarNovoContato()">Criar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Alterar Vendedor -->
+<div id="modal-alterar-vendedor" class="modal-ov">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <h3 id="av-title">Alterar Vendedor</h3>
+      <button class="btn-mc" onclick="fecharModalVendedor()">✕</button>
+    </div>
+    <div class="modal-body" style="padding-bottom:4px">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Vendedor Responsável</label>
+      <select id="av-vend" style="width:100%;height:38px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none">
+        <option value="">Sem vendedor (Prospecção Geral)</option>
+      </select>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:8px">
+        💡 Remover o vendedor devolve o cliente para a Prospecção Geral
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="fecharModalVendedor()">Cancelar</button>
+      <button id="av-btn" class="btn-sv" style="width:auto;padding:8px 20px" onclick="salvarModalVendedor()">Salvar</button>
     </div>
   </div>
 </div>
