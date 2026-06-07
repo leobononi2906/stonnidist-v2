@@ -765,6 +765,31 @@ input,select,textarea { width:100%; }
   </div>
 </div>
 
+<!-- MODAL: Vincular ao ERP -->
+<div id="modal-vinc-erp" class="modal-ov">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3 id="erp-title">Vincular ao ERP</h3>
+      <button class="btn-mc" onclick="fecharVincularERP()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--blue-pale);border:1px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--blue-dark);margin-bottom:10px">
+        🔗 Vincule este cliente a um ou mais clientes reais do ERP.<br>
+        Os pedidos e datas serão sempre o mais recente entre todos os vínculos.
+      </div>
+      <input id="erp-search" type="text" placeholder="Buscar por nome, CNPJ ou código ERP..."
+        oninput="searchVincERP()"
+        style="height:38px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%;transition:border-color .15s"/>
+      <div id="erp-results" class="modal-res">
+        <p class="empty-msg">Digite para buscar clientes do ERP...</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="fecharVincularERP()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- SCRIPTS -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
