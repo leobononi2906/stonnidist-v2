@@ -40,6 +40,10 @@ const S = {
   // prospecção geral (sem vendedor) e vencidos (prazo expirado)
   prospGeral: [],
   prospVencidos: new Set(),
+  // modal novo contato umbler
+  novoContatoTel: null,
+  novoContatoNome: '',
+  novoContatoAtend: '',
 };
 
 // ── FORMATADORES ───────────────────────────────────────────
@@ -332,6 +336,14 @@ async function loadDetalhe(id) {
   S.telefones=Array.isArray(tels)?tels:[];
   S.pedidos=Array.isArray(peds)?peds:[];
 }
+
+// Carregar todos os clientes vinculados a um telefone (vínculos múltiplos)
+async function loadVinculosTelefone(telefone) {
+  if (!telefone) return [];
+  const data = await sbQ('atac_cliente_telefones',
+    `select=id,id_cliente,nome_cliente,descricao,principal&telefone=eq.${encodeURIComponent(telefone)}&order=principal.desc`);
+  return Array.isArray(data) ? data : [];
+}
 // Docs dos 3 meses anteriores (para comparativo na aba vendedores)
 async function loadDocs3m() {
   const n=new Date(),y=n.getFullYear(),m=n.getMonth();
@@ -351,10 +363,22 @@ async function loadDocs3m() {
 // ══════════════════════════════════════════════════════════
 function gotoTab(tab) {
   S.tab=tab;
+  if(window.setPageInfo) window.setPageInfo(tab);
+  // sidebar active
   ['home','vendedores','crm','config'].forEach(t=>{
-    document.getElementById(`si-${t}`)?.classList.toggle('on',t===tab);
-    document.getElementById(`pg-${t}`)?.classList.toggle('on',t===tab);
+    document.getElementById(`si-${t}`)?.classList.toggle('active',t===tab);
   });
+  // páginas: pg-home, pg-vendedores, pg-crm (usa pg-crm.active), pg-config
+  ['home','vendedores','config'].forEach(t=>{
+    const el=document.getElementById(`pg-${t}`);
+    if(el){ el.classList.toggle('active',t===tab); }
+  });
+  // CRM usa classe diferente
+  const crmEl=document.getElementById('pg-crm');
+  if(crmEl){ crmEl.classList.toggle('active',tab==='crm'); }
+  // filtros na topbar: ocultar no CRM e Config
+  const tf=document.getElementById('topbar-filters');
+  if(tf) tf.style.display=(tab==='crm'||tab==='config')?'none':'flex';
   if(tab==='home')renderHome();
   if(tab==='vendedores')renderVendedores();
   if(tab==='crm')renderCRM();
@@ -546,7 +570,8 @@ function renderUmbler() {
         <div class="umbl-nome">${c.nome_contato||'Sem nome'}</div>
         <div class="umbl-info"><span>${fmtP(c.telefone)}</span><span>${sN(c.nome_atendente)}</span><span>${fmtDT(c.ultimo_contato)}</span></div>
         <div class="umbl-acts">
-          <button class="btn-vinc" onclick="abrirVinc('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">🔗 Vincular cliente</button>
+          <button class="btn-vinc" onclick="abrirVinc('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">🔗 Vincular</button>
+          <button class="btn-vinc" style="border-color:var(--blue-mid);color:var(--blue-mid)" onclick="abrirNovoContato('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">👤 Criar Novo</button>
           <button class="btn-nc" onclick="naoComercial('${esc(c.telefone)}')">✕ Não comercial</button>
         </div>
       </div>`).join('')}
@@ -731,11 +756,12 @@ function renderDrawer(){
           <div class="ph-info">
             <span class="ph-num">${fmtP(t.telefone)}</span>
             ${t.nome_contato?`<span class="ph-name">${t.nome_contato}${t.cargo?' · '+t.cargo:''}</span>`:''}
+            ${t.descricao&&!t.nome_contato?`<span class="ph-name">(${t.descricao})</span>`:''}
             ${t.principal?'<span class="ph-princ">Principal</span>':''}
           </div>
           <div class="ph-acts">
             <a class="ph-wa" href="https://wa.me/${(t.telefone||'').replace(/\D/g,'')}" target="_blank">💬</a>
-            <button class="ph-del" onclick="delPhone('${t.id}')">✕</button>
+            <button class="ph-del" title="Remover" onclick="delPhone('${t.id}')">✕</button>
           </div>
         </div>`).join('')||'<p style="color:#475569;font-size:12px">Nenhum telefone</p>'}
     </div>
@@ -972,7 +998,8 @@ async function naoComercial(tel){
 // modal vincular cliente
 function abrirVinc(tel,nome,atend){
   const m=document.getElementById('modal-vinc');if(!m)return;
-  m.dataset.tel=tel;m.dataset.nome=nome;m.dataset.atend=atend;
+  m.dataset.tel=tel;m.dataset.nome=nome;m.dataset.atend=atend||'';
+  m.dataset.extra='';
   m.classList.add('open');
   document.getElementById('vinc-search').value='';
   document.getElementById('vinc-results').innerHTML='<p class="empty-msg">Digite para buscar...</p>';
@@ -987,11 +1014,47 @@ async function searchVinc(){
 }
 async function confirmarVinc(cId,cNome){
   const m=document.getElementById('modal-vinc');if(!m)return;
-  await sbInsert('atac_cliente_telefones',{id_cliente:cId,nome_cliente:cNome,telefone:m.dataset.tel,descricao:'Umbler',principal:true});
-  toast(`Vinculado → ${cNome}`);
-  closeVinc();
-  await Promise.all([loadUmbler(),loadCarteira(),loadProspeccao()]);
-  renderUmbler();renderLista();
+  const tel=m.dataset.tel;
+  const isExtra=(m.dataset.extra==='true');
+
+  // Verifica se já tem compras → vai para Carteira ou Prospecção
+  // (apenas para novo vínculo, não para extra)
+  const principal = !isExtra; // se é o primeiro vínculo, marcar como principal
+
+  await sbInsert('atac_cliente_telefones',{
+    id_cliente:cId, nome_cliente:cNome,
+    telefone:tel, descricao:'Umbler', principal
+  });
+
+  // Auto-detectar vendedor pelo atendente (apenas em novo vínculo)
+  if (!isExtra) {
+    const atend = m.dataset.atend || '';
+    const uvMatch = S.umblerVendMap.find(u =>
+      (u.usuario_umbler||'').toLowerCase() === atend.toLowerCase() ||
+      (u.nome_vendedor_erp||'').toLowerCase() === atend.toLowerCase()
+    );
+    if (uvMatch) {
+      const vend = S.vendedores.find(v => v.id_vendedor === uvMatch.id_vendedor_erp);
+      if (vend) {
+        await sbUpsert('atac_cliente_vendedor', {
+          id_cliente: cId, nome_cliente: cNome,
+          id_vendedor_responsavel: vend.id_vendedor,
+          nome_vendedor_responsavel: vend.nome_vendedor,
+          atualizado_por: 'UMBLER'
+        }, 'id_cliente');
+      }
+    }
+    toast(`✅ ${cNome} vinculado`);
+    closeVinc();
+    await Promise.all([loadUmbler(),loadCarteira(),loadProspeccao()]);
+    renderUmbler();renderLista();
+  } else {
+    // Modo extra: apenas atualiza o drawer
+    m.dataset.extra = '';
+    toast(`🔗 ${cNome} vinculado a este número`);
+    closeVinc();
+    if (S.selId) { await loadDetalhe(S.selId); renderDrawer(); }
+  }
 }
 
 // controles UI
@@ -1020,6 +1083,135 @@ function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
 function setPSort(v){S.pSort=v;renderLista();}
 function handleSearch(v){S.search=v;renderLista();}
+
+// ── MODAL NOVO CONTATO UMBLER → PROSPECÇÃO ────────────────────
+function abrirNovoContato(tel, nome, atend) {
+  S.novoContatoTel = tel;
+  S.novoContatoNome = nome;
+  S.novoContatoAtend = atend;
+  const m = document.getElementById('modal-novo-contato');
+  if (!m) return;
+  // preencher campos
+  document.getElementById('nc-nome').value = nome || '';
+  document.getElementById('nc-tel').value = fmtP(tel) || '';
+  document.getElementById('nc-cnpj').value = '';
+  document.getElementById('nc-cidade').value = '';
+  document.getElementById('nc-uf').value = '';
+  // detectar vendedor pelo atendente
+  const uvMatch = S.umblerVendMap.find(u =>
+    (u.usuario_umbler||'').toLowerCase() === (atend||'').toLowerCase() ||
+    (u.nome_vendedor_erp||'').toLowerCase() === (atend||'').toLowerCase()
+  );
+  const vendId = uvMatch?.id_vendedor_erp || null;
+  const sel = document.getElementById('nc-vend');
+  if (sel) {
+    sel.innerHTML = '<option value="">Sem vendedor (Prospecção Geral)</option>' +
+      S.vendedores.map(v => `<option value="${v.id_vendedor}"${v.id_vendedor===vendId?' selected':''}>${v.nome_vendedor}</option>`).join('');
+  }
+  m.classList.add('open');
+}
+function fecharNovoContato() {
+  document.getElementById('modal-novo-contato')?.classList.remove('open');
+}
+async function salvarNovoContato() {
+  const nome = document.getElementById('nc-nome')?.value?.trim();
+  const tel = S.novoContatoTel;
+  const cnpj = document.getElementById('nc-cnpj')?.value?.trim();
+  const cidade = document.getElementById('nc-cidade')?.value?.trim();
+  const uf = document.getElementById('nc-uf')?.value?.trim();
+  const vendId = document.getElementById('nc-vend')?.value;
+  if (!nome) { toast('Nome é obrigatório', 'err'); return; }
+  const btn = document.getElementById('nc-btn');
+  if (btn) { btn.textContent = 'Salvando...'; btn.disabled = true; }
+  try {
+    // 1. Criar em atac_clientes_historico (origem UMBLER)
+    const r = await fetch(`${window.SUPA_URL}/rest/v1/atac_clientes_historico`, {
+      method: 'POST',
+      headers: { apikey: window.SUPA_KEY, Authorization: `Bearer ${await getToken()}`,
+        'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ nome_cliente: nome, origem: 'UMBLER',
+        cnpj_cpf: cnpj||null, cidade: cidade||null, uf: uf||null,
+        descartado: false, excluido: false, ultima_compra_anterior: null })
+    });
+    if (!r.ok) { toast('Erro ao criar cliente', 'err'); return; }
+    const [novo] = await r.json();
+    const newId = novo.id;
+    // 2. Vincular telefone
+    await sbInsert('atac_cliente_telefones', {
+      id_cliente: newId, nome_cliente: nome,
+      telefone: tel, descricao: 'Umbler', principal: true
+    });
+    // 3. Vincular vendedor se selecionado
+    if (vendId) {
+      const vend = S.vendedores.find(v => v.id_vendedor === Number(vendId));
+      await sbUpsert('atac_cliente_vendedor', {
+        id_cliente: newId, nome_cliente: nome,
+        id_vendedor_responsavel: Number(vendId),
+        nome_vendedor_responsavel: vend?.nome_vendedor || '',
+        atualizado_por: 'UMBLER'
+      }, 'id_cliente');
+    }
+    toast(`✅ ${nome} criado e adicionado à ${vendId ? 'Prospecção do Vendedor' : 'Prospecção Geral'}`);
+    fecharNovoContato();
+    // Recarregar
+    await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
+    renderUmbler(); renderLista();
+  } finally {
+    if (btn) { btn.textContent = 'Criar Cliente'; btn.disabled = false; }
+  }
+}
+
+// ── VÍNCULOS MÚLTIPLOS POR TELEFONE ───────────────────────────
+async function toggleVincsTel(phId, telefone) {
+  const listEl = document.getElementById(`vinc-tel-list-${phId}`);
+  if (!listEl) return;
+  if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
+  listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0">Carregando...</div>';
+  listEl.style.display = 'block';
+  const vincs = await loadVinculosTelefone(telefone);
+  if (!vincs.length) { listEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted);padding:4px 0">Nenhum outro cliente vinculado</div>'; return; }
+  listEl.innerHTML = `
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
+      Clientes com este número (${vincs.length})
+    </div>
+    ${vincs.map(v=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;margin-bottom:4px;gap:8px">
+        <div style="min-width:0;flex:1">
+          <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${v.nome_cliente}</span>
+          <span style="font-size:10px;color:var(--text-muted);margin-left:6px">#${v.id_cliente}</span>
+          ${v.principal?'<span style="font-size:9px;background:var(--blue-pale);color:var(--blue-dark);border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:700">Principal</span>':''}
+          ${v.descricao?`<span style="font-size:10px;color:var(--text-muted);margin-left:4px">(${v.descricao})</span>`:''}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="selCliente(${v.id_cliente})" style="font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:var(--surface);cursor:pointer;font-weight:500">Ver</button>
+          <button onclick="removerVincTel('${v.id}')" style="font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--red);background:var(--red-bg);cursor:pointer;font-weight:500">✕</button>
+        </div>
+      </div>`).join('')}
+    <button onclick="abrirVincTelExtra('${esc(telefone)}')"
+      style="font-size:11px;color:var(--blue-mid);background:none;border:none;cursor:pointer;padding:4px 0;font-weight:600;display:block">
+      + Vincular outro cliente a este número
+    </button>`;
+}
+
+// Vincular um telefone extra a outro cliente (além do atual)
+function abrirVincTelExtra(telefone) {
+  // Reutiliza o modal de vincular, mas salva o telefone sem remover o vínculo atual
+  const m = document.getElementById('modal-vinc');
+  if (!m) return;
+  m.dataset.tel = telefone;
+  m.dataset.extra = 'true'; // flag: não é novo, é extra
+  m.classList.add('open');
+  document.getElementById('vinc-search').value = '';
+  document.getElementById('vinc-results').innerHTML = '<p class="empty-msg">Digite para buscar...</p>';
+}
+
+async function removerVincTel(phId) {
+  if (!confirm('Remover este vínculo (não remove o cliente, só a ligação com este número)?')) return;
+  await sbDel('atac_cliente_telefones', 'id', phId);
+  toast('Vínculo removido!');
+  // Recarregar detalhe
+  if (S.selId) { await loadDetalhe(S.selId); renderDrawer(); }
+}
 
 // ── ASSUMIR CLIENTE (Prospecção Geral → Carteira do Vendedor) ──
 async function assumirCliente(id, nomeCliente) {
@@ -1053,7 +1245,12 @@ async function assumirCliente(id, nomeCliente) {
 }
 
 // exports
-window.APP={init};
+window.APP={init, refresh: async function(){
+  await Promise.all([loadDocs(),loadCarteira(),loadProspeccao(),loadUmbler(),loadOverdue(),loadToday()]);
+  if(S.tab==='home')renderHome();
+  if(S.tab==='vendedores')renderVendedores();
+  if(S.tab==='crm')renderCRM();
+}};
 window.gotoTab=gotoTab;
 window.applyPeriod=onPeriodChange; // alias para compatibilidade
 window.onPeriodChange=onPeriodChange;
@@ -1081,6 +1278,12 @@ window.closeVinc=closeVinc;
 window.searchVinc=searchVinc;
 window.confirmarVinc=confirmarVinc;
 window.toggleUmbler=toggleUmbler;
+window.abrirNovoContato=abrirNovoContato;
+window.toggleVincsTel=toggleVincsTel;
+window.removerVincTel=removerVincTel;
+window.abrirVincTelExtra=abrirVincTelExtra;
+window.fecharNovoContato=fecharNovoContato;
+window.salvarNovoContato=salvarNovoContato;
 window.toggleNotaDate=toggleNotaDate;
 window.saveCfg=saveCfg;
 window.newUV=newUV;
