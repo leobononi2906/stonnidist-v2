@@ -66,34 +66,34 @@ async function getSess() {
 }
 async function sbFetch(table, params='') {
   const sess = await getSess();
-  const token = sess?.access_token || SUPA_KEY;
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}&limit=9999`, {
-    headers: { apikey: SUPA_KEY, Authorization:`Bearer ${token}`, 'Content-Type':'application/json' }
+  const token = sess?.access_token || window.SUPA_KEY;
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${params}&limit=9999`, {
+    headers: { apikey: window.SUPA_KEY, Authorization:`Bearer ${token}`, 'Content-Type':'application/json' }
   });
   return r.json();
 }
 async function sbPost(table, body) {
   const sess = await getSess();
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}`, {
     method:'POST',
-    headers:{apikey:SUPA_KEY,Authorization:`Bearer ${sess?.access_token||SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
+    headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
     body:JSON.stringify(body)
   });
   return r;
 }
 async function sbPatch(table, field, val, body) {
   const sess = await getSess();
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
     method:'PATCH',
-    headers:{apikey:SUPA_KEY,Authorization:`Bearer ${sess?.access_token||SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
+    headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`,'Content-Type':'application/json',Prefer:'return=minimal'},
     body:JSON.stringify(body)
   });
   return r;
 }
 async function sbDelete(table, field, val) {
   const sess = await getSess();
-  await fetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
-    method:'DELETE', headers:{apikey:SUPA_KEY,Authorization:`Bearer ${sess?.access_token||SUPA_KEY}`}
+  await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`, {
+    method:'DELETE', headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${sess?.access_token||window.SUPA_KEY}`}
   });
 }
 
@@ -114,7 +114,7 @@ async function initCRM() {
   await Promise.all([loadVendedores(), loadDimMap()]);
   await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmblerPendentes(), loadOverdueTasks()]);
   await loadTodayTasks();
-  // aba padrão = CRM
+  // Abre direto no CRM
   switchTab('crm');
 }
 
