@@ -366,15 +366,20 @@ async function loadUmbler() {
           }
         }
 
-        // Vincular telefone em ambos os casos
-        inserir.push({
-          id_cliente: match.id_cliente,
-          nome_cliente: match.nome_cliente,
-          telefone: c.telefone,
-          descricao: 'ERP',
-          principal: false
-        });
-        vinculadosAgora.add(c.telefone);
+        // Só vincula automaticamente se já estava na view (cliente atacado conhecido)
+        if (jaExiste) {
+          inserir.push({
+            id_cliente: match.id_cliente,
+            nome_cliente: match.nome_cliente,
+            telefone: c.telefone,
+            descricao: 'ERP',
+            principal: false
+          });
+          vinculadosAgora.add(c.telefone);
+        } else {
+          // Não está no CRM — guardar sugestão para mostrar no card
+          c.erpSugestao = { id: match.id_cliente, nome: match.nome_cliente };
+        }
       }
     }
 
@@ -785,15 +790,22 @@ function renderUmbler() {
       <span class="umbl-badge">${S.umbler.length}</span>
     </div>
     ${open?`<div class="umbl-body" style="max-height:400px;overflow-y:auto">
-      ${S.umbler.map(c=>`<div class="umbl-item">
+      ${S.umbler.map(c=>{
+        const sug = c.erpSugestao;
+        return `<div class="umbl-item">
         <div class="umbl-nome">${c.nome_contato||'Sem nome'}</div>
         <div class="umbl-info"><span>${fmtP(c.telefone)}</span><span>${sN(c.nome_atendente)}</span><span>${fmtDT(c.ultimo_contato)}</span></div>
+        ${sug ? `<div style="display:flex;align-items:center;gap:6px;margin:4px 0;padding:5px 8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:6px">
+          <span style="font-size:11px;color:var(--blue-mid);font-weight:600">🔗 Possível: ${sug.nome}</span>
+          <button class="btn-vinc" style="margin-left:auto;border-color:var(--blue-mid);color:var(--blue-mid);font-size:10px;padding:2px 7px" onclick="abrirVincComSugestao('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}',${sug.id},'${esc(sug.nome)}')">Vincular</button>
+        </div>` : ''}
         <div class="umbl-acts">
           <button class="btn-vinc" onclick="abrirVinc('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">🔗 Vincular</button>
-          <button class="btn-vinc" style="border-color:var(--blue-mid);color:var(--blue-mid)" onclick="abrirNovoContato('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">👤 Criar Novo</button>
+          ${!sug ? `<button class="btn-vinc" style="border-color:var(--blue-mid);color:var(--blue-mid)" onclick="abrirNovoContato('${esc(c.telefone)}','${esc(c.nome_contato)}','${esc(c.nome_atendente)}')">👤 Criar Novo</button>` : ''}
           <button class="btn-nc" onclick="naoComercial('${esc(c.telefone)}')">✕ Não comercial</button>
         </div>
-      </div>`).join('')}
+      </div>`;
+      }).join('')}
     </div>`:''}`;
 }
 function toggleUmbler(){S.umblerOpen=!S.umblerOpen;renderUmbler();}
@@ -1374,6 +1386,38 @@ function abrirVinc(tel,nome,atend){
   document.getElementById('vinc-results').innerHTML='<p class="empty-msg">Digite para buscar...</p>';
 }
 function closeVinc(){document.getElementById('modal-vinc')?.classList.remove('open');}
+
+// Abre modal de vincular com cliente do ERP pré-sugerido
+async function abrirVincComSugestao(tel, nome, atend, erpId, erpNome) {
+  const m = document.getElementById('modal-vinc');
+  if (!m) return;
+  m.dataset.tel = tel;
+  m.dataset.nome = nome;
+  m.dataset.atend = atend || '';
+  m.dataset.extra = '';
+  m.classList.add('open');
+
+  // Pré-popular busca com nome do cliente sugerido
+  const input = document.getElementById('vinc-search');
+  if (input) input.value = erpNome;
+
+  // Mostrar diretamente o cliente sugerido nos resultados
+  const el = document.getElementById('vinc-results');
+  if (el) {
+    el.innerHTML = `
+      <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:11px;color:var(--blue-mid)">
+        🔗 Sugestão baseada no telefone — confirme se é o cliente correto
+      </div>
+      <button class="mres-btn" onclick="confirmarVinc(${erpId},'${esc(erpNome)}')" style="border-color:rgba(59,130,246,.3)">
+        <div class="mres-nome">${erpNome}</div>
+        <div class="mres-meta">Cód. ERP #${erpId}</div>
+      </button>
+      <button onclick="document.getElementById('vinc-search').value='';document.getElementById('vinc-results').innerHTML='<p class=\"empty-msg\">Digite para buscar outro cliente...</p>'"
+        style="width:100%;margin-top:6px;padding:6px;font-size:11px;color:var(--text-muted);background:transparent;border:1px dashed var(--border);border-radius:6px;cursor:pointer">
+        Não é esse — buscar outro
+      </button>`;
+  }
+}
 async function searchVinc(){
   const q=document.getElementById('vinc-search')?.value?.trim();if(!q||q.length<2)return;
   const d=await sbQ('atac_clientes',`select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${q.replace(/\D/g,'')}*)`);
@@ -2371,6 +2415,7 @@ window.savePhone=savePhone;
 window.delPhone=delPhone;
 window.naoComercial=naoComercial;
 window.abrirVinc=abrirVinc;
+window.abrirVincComSugestao=abrirVincComSugestao;
 window.closeVinc=closeVinc;
 window.searchVinc=searchVinc;
 window.confirmarVinc=confirmarVinc;
