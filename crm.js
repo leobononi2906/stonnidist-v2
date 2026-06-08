@@ -27,7 +27,7 @@ const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
-  notas: [], telefones: [], pedidos: [], vinculosERP: [],  // vínculos ERP do cliente aberto
+  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(),  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   subFilter: 'todos',
@@ -338,15 +338,54 @@ async function loadDetalhe(id) {
     sbQ('atac_cliente_vinculos', `select=id,id_cliente_erp,nome_cliente_erp,cnpj_cpf_erp&id_cliente_crm=eq.${id}`),
   ]);
   S.notas = Array.isArray(notas) ? notas : [];
+  S.vinculosERP = Array.isArray(vincErp) ? vincErp : [];
+
+  // Sincronizar telefones do ERP (cliente + todos os vínculos ERP)
+  const todosIdsERP = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
+  const dimData = await sbQ('vw_dim_cliente', `select=id_cliente,telefone1,telefone2,telefone3&id_cliente=in.(${todosIdsERP.join(',')})`);
+  const dimArr = Array.isArray(dimData) ? dimData : [];
+
+  // Montar lista de telefones do ERP para inserir se não existirem
+  const telsExistentes = new Set((Array.isArray(tels) ? tels : []).map(t => (t.telefone||'').replace(/\D/g,'')));
+  const inserirTels = [];
+  for (const dim of dimArr) {
+    for (const campo of ['telefone1','telefone2','telefone3']) {
+      if (!dim[campo]) continue;
+      const norm = dim[campo].replace(/\D/g,'');
+      if (!norm || norm.length < 8) continue;
+      // Normalizar: adicionar DDI 55 se não tiver
+      const tel = norm.startsWith('55') && norm.length > 11 ? norm : '55' + norm;
+      if (telsExistentes.has(tel) || telsExistentes.has(norm)) continue;
+      telsExistentes.add(tel);
+      inserirTels.push({ id_cliente: id, nome_cliente: S.selCliente?.nome_cliente || '', telefone: tel, descricao: 'ERP', principal: false });
+    }
+  }
+  // Inserir novos telefones do ERP em batch
+  if (inserirTels.length > 0) {
+    await sbInsert('atac_cliente_telefones', inserirTels);
+  }
+
+  // Recarregar telefones após sync
+  const telsAtual = inserirTels.length > 0
+    ? await sbQ('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`)
+    : (Array.isArray(tels) ? tels : []);
+
   // Deduplicar telefones por número
-  const telsArr = Array.isArray(tels) ? tels : [];
   const telSeen = new Set();
-  S.telefones = telsArr.filter(t => {
+  S.telefones = (Array.isArray(telsAtual) ? telsAtual : []).filter(t => {
     const k = (t.telefone||'').replace(/\D/g,'');
     if(!k || telSeen.has(k)) return false;
     telSeen.add(k); return true;
   });
-  S.vinculosERP = Array.isArray(vincErp) ? vincErp : [];
+
+  // Buscar contatos Umbler vinculados por telefone
+  if (S.telefones.length > 0) {
+    const telsParam = S.telefones.map(t => t.telefone).join(',');
+    const umblerTels = await sbQ('atac_umbler_contatos', `select=telefone,nome_contato,nome_atendente,ultimo_contato&telefone=in.(${telsParam})`);
+    S.umblerTelMap = new Map((Array.isArray(umblerTels) ? umblerTels : []).map(u => [u.telefone, u]));
+  } else {
+    S.umblerTelMap = new Map();
+  }
 
   // Buscar pedidos de TODOS os IDs vinculados (cliente + ERPs vinculados)
   const todosIds = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
@@ -915,19 +954,22 @@ function renderDrawer(){
           <button style="font-size:12px;color:#64748b;padding:7px 10px" onclick="togglePhForm()">Cancelar</button>
         </div>
       </div>
-      ${S.telefones.map(t=>`
-        <div class="phone-card">
+      ${S.telefones.map(t=>{
+        const umbl = S.umblerTelMap?.get(t.telefone);
+        return `<div class="phone-card">
           <div class="ph-info">
             <span class="ph-num">${fmtP(t.telefone)}</span>
             ${t.nome_contato?`<span class="ph-name">${t.nome_contato}${t.cargo?' · '+t.cargo:''}</span>`:''}
-            ${t.descricao&&!t.nome_contato?`<span class="ph-name">(${t.descricao})</span>`:''}
+            ${t.descricao&&!t.nome_contato?`<span class="ph-name" style="color:var(--text-muted)">(${t.descricao})</span>`:''}
             ${t.principal?'<span class="ph-princ">Principal</span>':''}
+            ${umbl?`<span style="font-size:10px;color:var(--blue-mid);font-weight:600">💬 Umbler · ${sN(umbl.nome_atendente)} · ${fmtD(umbl.ultimo_contato)}</span>`:''}
           </div>
           <div class="ph-acts">
             <a class="ph-wa" href="https://wa.me/${(t.telefone||'').replace(/\D/g,'')}" target="_blank">💬</a>
             <button class="ph-del" title="Remover" onclick="delPhone('${t.id}')">✕</button>
           </div>
-        </div>`).join('')||'<p style="color:#475569;font-size:12px">Nenhum telefone</p>'}
+        </div>`;
+      }).join('')||'<p style="color:#475569;font-size:12px">Nenhum telefone</p>'}
     </div>
 
     <div>
