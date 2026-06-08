@@ -647,14 +647,15 @@ function renderUmbler() {
   const el=document.getElementById('umbl-wrap');if(!el)return;
   if(!S.umbler.length){el.innerHTML='';return;}
   const open=S.umblerOpen;
+  // Altura de ~5 itens visíveis (~80px cada) com scroll para o resto
   el.innerHTML=`
-    <div class="umbl-header${open?'':' coll'}" onclick="toggleUmbler()">
+    <div class="umbl-header${open?'':' coll'}" onclick="toggleUmbler()" style="border-bottom:1px solid var(--border)">
       <span style="font-size:11px;color:#f87171">${open?'▼':'▶'}</span>
       <span class="umbl-title">📲 Contatos Sem Tratativa</span>
       <span class="umbl-badge">${S.umbler.length}</span>
     </div>
-    ${open?`<div class="umbl-body">
-      ${S.umbler.slice(0,10).map(c=>`<div class="umbl-item">
+    ${open?`<div class="umbl-body" style="max-height:400px;overflow-y:auto">
+      ${S.umbler.map(c=>`<div class="umbl-item">
         <div class="umbl-nome">${c.nome_contato||'Sem nome'}</div>
         <div class="umbl-info"><span>${fmtP(c.telefone)}</span><span>${sN(c.nome_atendente)}</span><span>${fmtDT(c.ultimo_contato)}</span></div>
         <div class="umbl-acts">
