@@ -584,76 +584,46 @@ function renderCRM() {
   renderLista();
 }
 
-// Estado do painel de alertas (colapsável, persiste na sessão)
+// Alertas CRM — linha fina, 3 chips + ocultar
+// Estado persiste na sessão
 let alertasOcultos = false;
 
-// Alertas inteligentes: hoje, atrasadas, próximas — com botão Ocultar
 async function renderAlertasCRM() {
   const el = document.getElementById('crm-alertas'); if(!el)return;
 
-  // Se oculto, mostra só mini-chip
   if (alertasOcultos) {
     el.innerHTML = `
-      <div style="padding:6px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:var(--text-muted)">📋 Painel de alertas oculto</span>
-        <button onclick="toggleAlertasCRM()" style="font-size:11px;font-weight:600;color:var(--blue-mid);background:none;border:none;cursor:pointer;padding:2px 6px">Mostrar</button>
+      <div style="height:28px;border-bottom:1px solid var(--border);padding:0 12px;display:flex;align-items:center;gap:6px;background:var(--surface2)">
+        <span style="font-size:10px;color:var(--text-muted)">Alertas ocultos</span>
+        <button onclick="toggleAlertasCRM()" style="font-size:10px;font-weight:600;color:var(--blue-mid);background:none;border:none;cursor:pointer">Mostrar</button>
       </div>`;
     return;
   }
 
   const hoje = new Date().toISOString().split('T')[0];
-  const proxData = new Date(); proxData.setDate(proxData.getDate()+7);
-  const proxStr = proxData.toISOString().split('T')[0];
-
-  let base = 'select=id,tipo,nome_cliente,texto,data_prevista&resolvido=eq.false';
+  const proxStr = new Date(Date.now()+7*86400000).toISOString().split('T')[0];
+  let base = 'select=id&resolvido=eq.false';
   if (F.vendedorId) base += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
 
-  const [atrasadas, deHoje, proximas] = await Promise.all([
-    sbQ('atac_crm_notas', base + `&data_prevista=lt.${hoje}&order=data_prevista.asc&limit=50`),
-    sbQ('atac_crm_notas', base + `&data_prevista=eq.${hoje}&order=nome_cliente.asc`),
-    sbQ('atac_crm_notas', base + `&data_prevista=gt.${hoje}&data_prevista=lte.${proxStr}&order=data_prevista.asc&limit=20`),
+  const [atr, hj, prox] = await Promise.all([
+    sbQ('atac_crm_notas', base + `&data_prevista=lt.${hoje}&limit=999`),
+    sbQ('atac_crm_notas', base + `&data_prevista=eq.${hoje}&limit=999`),
+    sbQ('atac_crm_notas', base + `&data_prevista=gt.${hoje}&data_prevista=lte.${proxStr}&limit=999`),
   ]);
 
-  const nAtr = Array.isArray(atrasadas) ? atrasadas.length : 0;
-  const nHoje = Array.isArray(deHoje) ? deHoje.length : 0;
-  const nProx = Array.isArray(proximas) ? proximas.length : 0;
+  const nAtr = Array.isArray(atr)?atr.length:0;
+  const nHj  = Array.isArray(hj)?hj.length:0;
+  const nProx= Array.isArray(prox)?prox.length:0;
 
-  if (!nAtr && !nHoje && !nProx) { el.innerHTML=''; return; }
+  if (!nAtr && !nHj && !nProx) { el.innerHTML=''; return; }
 
+  // Uma única linha compacta
   el.innerHTML = `
-    <div style="border-bottom:1px solid var(--border)">
-      <!-- Cabeçalho sempre visível com chips de resumo + botão ocultar -->
-      <div style="padding:7px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--surface2)">
-        ${nHoje>0?`<span style="background:var(--blue-pale);color:var(--blue-dark);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">📌 ${nHoje} hoje</span>`:''}
-        ${nAtr>0?`<span onclick="setMainTab('agenda')" style="background:var(--red-bg);color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;cursor:pointer">⚠ ${nAtr} atrasada${nAtr>1?'s':''}</span>`:''}
-        ${nProx>0?`<span style="background:var(--surface);color:var(--text-muted);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid var(--border)">📅 ${nProx} esta semana</span>`:''}
-        <button onclick="toggleAlertasCRM()" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:2px 6px;flex-shrink:0">Ocultar ✕</button>
-      </div>
-      <!-- Atividades de hoje expandidas -->
-      ${nHoje>0?`
-      <div style="padding:6px 12px 8px">
-        ${(Array.isArray(deHoje)?deHoje:[]).map(t=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid rgba(0,119,204,.15);border-radius:var(--radius-sm);padding:5px 8px;margin-bottom:3px;gap:6px">
-            <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1">
-              ${tipoBdg(t.tipo)}
-              <span style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.nome_cliente}</span>
-              <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.texto||''}</span>
-            </div>
-            <button onclick="resolverNota('${t.id}',true)" class="btn-res" style="flex-shrink:0;font-size:10px;white-space:nowrap">✓ Resolver</button>
-          </div>`).join('')}
-        ${nAtr>0?`<div onclick="setMainTab('agenda')" style="display:flex;align-items:center;gap:6px;background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:5px 10px;cursor:pointer;margin-top:2px">
-          <span style="font-size:12px;font-weight:700;color:var(--red)">⚠ ${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
-          <span style="margin-left:auto;font-size:10px;color:var(--red);font-weight:600">Ver agenda →</span>
-        </div>`:''}
-      </div>`
-      :nAtr>0?`
-      <div style="padding:6px 12px 8px">
-        <div onclick="setMainTab('agenda')" style="display:flex;align-items:center;gap:6px;background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:7px 10px;cursor:pointer">
-          <span style="font-size:12px;font-weight:700;color:var(--red)">⚠ ${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
-          <span style="margin-left:auto;font-size:10px;color:var(--red);font-weight:600">Ver agenda →</span>
-        </div>
-      </div>`:''
-      }
+    <div style="height:30px;border-bottom:1px solid var(--border);padding:0 12px;display:flex;align-items:center;gap:6px;background:var(--surface2);flex-shrink:0">
+      ${nHj>0  ? `<span onclick="setMainTab('agenda')" style="background:var(--blue-pale);color:var(--blue-dark);font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;cursor:pointer;white-space:nowrap">📌 ${nHj} hoje</span>` : ''}
+      ${nAtr>0 ? `<span onclick="setMainTab('agenda')" style="background:var(--red-bg);color:var(--red);font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;cursor:pointer;white-space:nowrap">⚠ ${nAtr} atrasada${nAtr>1?'s':''}</span>` : ''}
+      ${nProx>0? `<span onclick="setMainTab('agenda')" style="background:var(--surface);color:var(--text-muted);font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;border:1px solid var(--border);cursor:pointer;white-space:nowrap">📅 ${nProx} próx. 7 dias</span>` : ''}
+      <button onclick="toggleAlertasCRM()" style="margin-left:auto;font-size:10px;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:0 4px;flex-shrink:0">Ocultar ✕</button>
     </div>`;
 }
 
