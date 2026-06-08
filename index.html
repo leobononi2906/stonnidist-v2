@@ -175,13 +175,13 @@ input,select,textarea { width:100%; }
 .fb.on { background:var(--blue-pale); color:var(--blue-dark); border-color:rgba(0,119,204,0.3); }
 
 /* umbler pendentes */
-.umbl-wrap { padding:8px 12px 0; flex-shrink:0; }
-.umbl-header { display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--red-bg); border:1px solid rgba(217,48,37,0.2); border-radius:var(--radius-sm) var(--radius-sm) 0 0; cursor:pointer; transition:background 0.15s; user-select:none; }
+.umbl-wrap { flex-shrink:0; border-bottom:1px solid var(--border); }
+.umbl-header { display:flex; align-items:center; gap:8px; padding:10px 16px; background:var(--red-bg); border:1px solid rgba(217,48,37,0.2); border-radius:var(--radius-sm) var(--radius-sm) 0 0; cursor:pointer; transition:background 0.15s; user-select:none; margin:8px 12px 0; }
 .umbl-header:hover { background:#FECACA44; }
-.umbl-header.coll { border-radius:var(--radius-sm); margin-bottom:4px; }
+.umbl-header.coll { border-radius:var(--radius-sm); margin-bottom:8px; }
 .umbl-badge { background:var(--red); color:#fff; font-size:9px; font-weight:700; border-radius:10px; padding:1px 7px; margin-left:2px; }
 .umbl-title { font-size:12px; font-weight:700; color:var(--red); flex:1; }
-.umbl-body { background:#FFF5F5; border:1px solid rgba(217,48,37,0.15); border-top:none; border-radius:0 0 var(--radius-sm) var(--radius-sm); padding:8px; margin-bottom:4px; display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; }
+.umbl-body { background:#FFF5F5; border:1px solid rgba(217,48,37,0.15); border-top:none; border-radius:0 0 var(--radius-sm) var(--radius-sm); padding:8px; margin:0 12px 4px; display:flex; flex-direction:column; gap:6px; max-height:400px; overflow-y:auto; }
 .umbl-item { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; }
 .umbl-nome { font-size:13px; font-weight:600; color:var(--text-primary); }
 .umbl-info { font-size:11px; color:var(--text-muted); margin-top:2px; display:flex; gap:10px; flex-wrap:wrap; }
@@ -535,6 +535,8 @@ input,select,textarea { width:100%; }
 
           <!-- Lista esquerda -->
           <div class="cl-panel">
+            <!-- Umbler pendentes — acima da busca -->
+            <div id="umbl-wrap" class="umbl-wrap" style="flex-shrink:0;overflow:hidden"></div>
             <div class="cl-controls">
               <div class="sbox">
                 <span class="si-icon">🔍</span>
@@ -568,8 +570,6 @@ input,select,textarea { width:100%; }
               </div>
             </div>
 
-            <!-- Umbler pendentes (acima da lista) -->
-            <div id="umbl-wrap" class="umbl-wrap"></div>
             <!-- Alertas CRM (substitui today-wrap) -->
             <div id="crm-alertas" style="flex-shrink:0"></div>
             <!-- Lista -->
