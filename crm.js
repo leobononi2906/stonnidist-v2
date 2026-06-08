@@ -742,9 +742,29 @@ function renderLista() {
 }
 
 function filteredCarteira(){
-  let d=S.carteira;
-  if(S.search){const s=S.search.toLowerCase();d=d.filter(c=>{if((c.nome_cliente||'').toLowerCase().includes(s))return true;const dim=S.dimMap.get(c.id_cliente)||{};return(dim.cidade||'').toLowerCase().includes(s)||(dim.cnpj_cpf||'').replace(/\D/g,'').includes(s.replace(/\D/g,''))||String(c.id_cliente).includes(s);});}
-  if(S.subFilter!=='todos')d=d.filter(c=>{const st=getStatus(c);if(S.subFilter==='ativo')return st==='ATIVO';if(S.subFilter==='atencao')return st==='ATENCAO';if(S.subFilter==='em_risco')return st==='PERDIDO';return true;});
+  let d = S.carteira;
+  if (S.search && S.search.trim()) {
+    const s = S.search.trim().toLowerCase();
+    d = d.filter(c => {
+      const nome = (c.nome_cliente || '').toLowerCase();
+      if (nome.includes(s)) return true;
+      const dim = S.dimMap.get(c.id_cliente) || {};
+      if ((dim.cidade || '').toLowerCase().includes(s)) return true;
+      const cnpj = (dim.cnpj_cpf || c.cnpj_cpf || '').replace(/\D/g,'');
+      if (cnpj && cnpj.includes(s.replace(/\D/g,''))) return true;
+      if (String(c.id_cliente).includes(s)) return true;
+      return false;
+    });
+  }
+  if (S.subFilter !== 'todos') {
+    d = d.filter(c => {
+      const st = getStatus(c);
+      if (S.subFilter === 'ativo')    return st === 'ATIVO';
+      if (S.subFilter === 'atencao')  return st === 'ATENCAO';
+      if (S.subFilter === 'em_risco') return st === 'PERDIDO';
+      return true;
+    });
+  }
   return d;
 }
 function filteredProsp(){
@@ -992,21 +1012,47 @@ async function renderConfig() {
     <!-- Vínculos Umbler ↔ Vendedor -->
     <div class="cfg-section">
       <h3>🔗 Atendentes Umbler → Vendedores ERP</h3>
-      <p style="font-size:11px;color:#64748b;margin-bottom:12px">Relaciona o usuário Umbler (atendente) ao vendedor do ERP, para filtrar contatos e atribuição automática.</p>
-      <div id="uv-list">
-        ${uvRows.length?uvRows.map(r=>`
-          <div class="uv-row">
-            <div class="uv-vendedor">
-              <div class="uv-vname">${r.nome_vendedor_erp||'Vendedor #'+r.id_vendedor_erp}</div>
-              <div class="uv-umbler">Umbler: ${r.usuario_umbler||'—'}</div>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">Relaciona o ID do membro Umbler ao vendedor do ERP. O <strong>ID Membro</strong> é crítico — a Edge Function usa ele para resolver o atendente.</p>
+
+      <!-- Vendedores SEM vínculo configurado — alerta -->
+      ${(()=>{
+        const vendSemVinc = S.vendedores.filter(v => !uvRows.some(r => r.id_vendedor_erp === v.id_vendedor));
+        return vendSemVinc.length ? `
+          <div style="background:var(--orange-bg);border:1px solid rgba(224,123,0,.2);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px">
+            <p style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px">⚠ Vendedores sem vínculo Umbler:</p>
+            ${vendSemVinc.map(v=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:12px;color:var(--text-primary)">${v.nome_vendedor}</span>
+                <button onclick="newUVforVend(${v.id_vendedor},'${esc(v.nome_vendedor)}')"
+                  style="font-size:11px;font-weight:600;padding:3px 10px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer">
+                  + Configurar
+                </button>
+              </div>`).join('')}
+          </div>` : '';
+      })()}
+
+      <div id="uv-list" style="display:flex;flex-direction:column;gap:6px">
+        ${uvRows.length ? uvRows.map(r=>`
+          <div class="uv-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+              <div>
+                <div class="uv-vname">${r.nome_vendedor_erp||'Vendedor #'+r.id_vendedor_erp}</div>
+                <div class="uv-umbler" style="display:flex;gap:10px;flex-wrap:wrap">
+                  <span>Usuário: <strong>${r.usuario_umbler||'—'}</strong></span>
+                  ${r.id_membro_umbler?`<span style="font-family:'DM Mono',monospace;color:var(--text-muted)">ID: ${r.id_membro_umbler}</span>`:'<span style="color:var(--red);font-weight:600">⚠ ID Membro não configurado</span>'}
+                  ${r.inbox_umbler?`<span style="color:var(--text-muted)">Inbox: ${r.inbox_umbler}</span>`:''}
+                  <span style="${r.ativo?'color:var(--green)':'color:var(--text-muted)'}">${r.ativo?'● Ativo':'○ Inativo'}</span>
+                </div>
+              </div>
+              <div class="uv-acts">
+                <button class="btn-sm" onclick="editUV('${r.id}','${esc(r.usuario_umbler||'')}',${r.id_vendedor_erp||0},'${esc(r.id_membro_umbler||'')}','${esc(r.inbox_umbler||'')}',${r.ativo!==false})">✎ Editar</button>
+                <button class="btn-sm danger" onclick="delUV('${r.id}')">✕</button>
+              </div>
             </div>
-            <div class="uv-acts">
-              <button class="btn-sm" onclick="editUV(${r.id},'${esc(r.usuario_umbler||'')}',${r.id_vendedor_erp})">✎ Editar</button>
-              <button class="btn-sm danger" onclick="delUV(${r.id})">✕ Remover</button>
-            </div>
-          </div>`).join(''):'<p style="color:#475569;font-size:12px;padding:8px 0">Nenhum vínculo cadastrado</p>'}
+          </div>`).join('')
+        : '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">Nenhum vínculo cadastrado</p>'}
       </div>
-      <button class="btn-sm" style="margin-top:10px;border-color:#3b82f6;color:#3b82f6" onclick="newUV()">+ Novo Vínculo</button>
+      <button class="btn-sm" style="margin-top:10px;border-color:var(--blue-mid);color:var(--blue-mid)" onclick="newUV()">+ Novo Vínculo</button>
     </div>
 
     <!-- Contatos Umbler (todos, com/sem vínculo) -->
@@ -1068,29 +1114,37 @@ async function saveCfg() {
 }
 
 // vínculos umbler-vendedor
-function newUV(){openUV(null,'',null);}
-function editUV(id,umbler,vendId){openUV(id,umbler,vendId);}
-function openUV(id,umbler,vendId){
+function newUV(){openUV(null,'',null,'','',true);}
+function newUVforVend(vendId, vendNome){openUV(null,'',vendId,'','',true);}
+function editUV(id,umbler,vendId,idMembro,inbox,ativo){openUV(id,umbler,vendId,idMembro,inbox,ativo);}
+function openUV(id,umbler,vendId,idMembro,inbox,ativo){
   const m=document.getElementById('modal-uv');if(!m)return;
   m.dataset.uvid=id||'';
   document.getElementById('uv-umbler').value=umbler||'';
-  document.getElementById('uv-title').textContent=id?'Editar Vínculo':'Novo Vínculo Umbler → Vendedor';
-  // popular select vendedor
+  document.getElementById('uv-title').textContent=id?'Editar Vínculo Umbler':'Novo Vínculo Umbler → Vendedor';
+  const idMEl=document.getElementById('uv-id-membro'); if(idMEl) idMEl.value=idMembro||'';
+  const inboxEl=document.getElementById('uv-inbox'); if(inboxEl) inboxEl.value=inbox||'';
+  const ativoEl=document.getElementById('uv-ativo'); if(ativoEl) ativoEl.checked=ativo!==false;
   const sel=document.getElementById('uv-vend');
   sel.innerHTML='<option value="">Selecione...</option>'+S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===vendId?' selected':''}>${v.nome_vendedor}</option>`).join('');
   m.classList.add('open');
 }
 function closeUV(){document.getElementById('modal-uv')?.classList.remove('open');}
 async function saveUV(){
-  const id=document.getElementById('modal-uv').dataset.uvid;
-  const umbler=document.getElementById('uv-umbler').value.trim();
-  const vendId=Number(document.getElementById('uv-vend').value);
-  if(!umbler||!vendId){toast('Preencha todos os campos','err');return;}
-  const vendNome=S.vendedores.find(v=>v.id_vendedor===vendId)?.nome_vendedor||'';
-  if(id){
-    await sbUpdate('atac_umbler_vendedor','id',id,{usuario_umbler:umbler,id_vendedor_erp:vendId,nome_vendedor_erp:vendNome});
+  const id = document.getElementById('modal-uv').dataset.uvid;
+  const umbler = document.getElementById('uv-umbler').value.trim();
+  const idMembro = document.getElementById('uv-id-membro')?.value?.trim() || null;
+  const inboxUmbler = document.getElementById('uv-inbox')?.value?.trim() || null;
+  const ativo = document.getElementById('uv-ativo')?.checked !== false;
+  const vendId = Number(document.getElementById('uv-vend').value);
+  if (!umbler || !vendId) { toast('Preencha usuário e vendedor','err'); return; }
+  const vendNome = S.vendedores.find(v=>v.id_vendedor===vendId)?.nome_vendedor||'';
+  const payload = { usuario_umbler:umbler, id_vendedor_erp:vendId, nome_vendedor_erp:vendNome,
+    id_membro_umbler: idMembro, inbox_umbler: inboxUmbler, ativo };
+  if (id && id.length > 0) {
+    await sbUpdate('atac_umbler_vendedor','id',id, payload);
   } else {
-    await sbInsert('atac_umbler_vendedor',{usuario_umbler:umbler,id_vendedor_erp:vendId,nome_vendedor_erp:vendNome});
+    await sbInsert('atac_umbler_vendedor', payload);
   }
   toast('Vínculo salvo!');
   closeUV();
@@ -1098,7 +1152,7 @@ async function saveUV(){
   renderConfig();
 }
 async function delUV(id){
-  if(!confirm('Remover vínculo?'))return;
+  if(!confirm('Remover vínculo Umbler?'))return;
   await sbDel('atac_umbler_vendedor','id',id);
   toast('Removido!');
   await loadUmblerVendMap();
@@ -1235,27 +1289,45 @@ function fecharVincularERP() { document.getElementById('modal-vinc-erp')?.classL
 async function searchVincERP() {
   const q = document.getElementById('erp-search')?.value?.trim();
   if (!q || q.length < 2) return;
-  // Busca na vw_dim_cliente — clientes reais do ERP
-  const data = await sbQ('vw_dim_cliente',
-    `select=id_cliente,nome_cliente,cnpj,cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj.ilike.*${q.replace(/\D/g,'')}*,id_cliente.eq.${isNaN(q)?0:q})&limit=15`);
-  const res = Array.isArray(data) ? data : [];
   const el = document.getElementById('erp-results');
   if (!el) return;
-  if (!res.length) { el.innerHTML = '<p class="empty-msg">Nenhum cliente ERP encontrado</p>'; return; }
-  // Mostrar os já vinculados com badge diferente
+  el.innerHTML = '<p class="empty-msg" style="padding:8px">Buscando...</p>';
+
+  // Busca em atac_clientes (que é a tabela certa com os clientes do ERP)
+  const qNum = isNaN(q) ? 0 : parseInt(q);
+  const qCnpj = q.replace(/\D/g,'');
+
+  // Monta query OR correta para o Supabase
+  let params = `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&limit=20`;
+  if (qNum > 0) {
+    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,id_cliente.eq.${qNum})`;
+  } else if (qCnpj.length >= 8) {
+    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${qCnpj}*)`;
+  } else {
+    params += `&nome_cliente=ilike.*${encodeURIComponent(q)}*`;
+  }
+
+  const data = await sbQ('atac_clientes', params);
+  const res = Array.isArray(data) ? data : [];
+
+  if (!res.length) {
+    el.innerHTML = '<p class="empty-msg">Nenhum cliente encontrado</p>';
+    return;
+  }
+
   const vincAtual = new Set(S.vinculosERP.map(v => v.id_cliente_erp));
   el.innerHTML = res.map(c => `
-    <button onclick="confirmarVincERP(${c.id_cliente},'${esc(c.nome_cliente)}','${esc(c.cnpj||c.cpf||'')}')"
-      ${vincAtual.has(c.id_cliente)?'disabled style="opacity:.5;cursor:default"':''}
+    <button onclick="confirmarVincERP(${c.id_cliente},'${esc(c.nome_cliente||'')}','${esc(c.cnpj_cpf||'')}')"
+      ${vincAtual.has(c.id_cliente) ? 'disabled style="opacity:.5;cursor:default"' : ''}
       class="mres-btn" style="margin-bottom:4px">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div class="mres-nome">${c.nome_cliente}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${vincAtual.has(c.id_cliente)?'<span style="font-size:10px;color:var(--green);font-weight:600">✓ Já vinculado</span>':''}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="mres-nome" style="flex:1">${c.nome_cliente||'—'}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${vincAtual.has(c.id_cliente) ? '<span style="font-size:10px;color:var(--green);font-weight:600">✓ Já vinculado</span>' : ''}
           <span style="font-size:11px;color:var(--text-muted)">#${c.id_cliente}</span>
         </div>
       </div>
-      ${(c.cnpj||c.cpf||c.cidade)?`<div class="mres-meta">${c.cnpj?fmtC(c.cnpj)+' · ':''}${c.cidade||''}${c.uf?' - '+c.uf:''}</div>`:''}
+      ${(c.cnpj_cpf||c.cidade) ? `<div class="mres-meta">${c.cnpj_cpf ? fmtC(c.cnpj_cpf)+' · ' : ''}${c.cidade||''}${c.uf ? ' - '+c.uf : ''}</div>` : ''}
     </button>`).join('');
 }
 
@@ -1444,10 +1516,21 @@ function setProspTab(pt){
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
 function setPSort(v){S.pSort=v;renderLista();}
-function handleSearch(v){
+async function handleSearch(v){
   S.search=v;
-  // Se está na agenda, volta para carteira antes de buscar
   if(S.mainTab==='agenda') setMainTab('carteira');
+
+  // Se tem texto e a lista local está vazia (não carregou ainda), buscar no Supabase
+  const lista = S.mainTab==='carteira' ? S.carteira :
+                (S.prospTab==='geral' ? S.prospGeral : S.prospeccao);
+
+  if (v.trim().length >= 2 && lista.length === 0) {
+    // Dados ainda carregando — aguarda
+    renderLista();
+    return;
+  }
+
+  // Busca local (já carregado)
   renderLista();
 }
 
@@ -1982,6 +2065,7 @@ window.salvarNovoContato=salvarNovoContato;
 window.toggleNotaDate=toggleNotaDate;
 window.saveCfg=saveCfg;
 window.newUV=newUV;
+window.newUVforVend=newUVforVend;
 window.editUV=editUV;
 window.closeUV=closeUV;
 window.saveUV=saveUV;
