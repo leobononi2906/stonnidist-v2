@@ -992,5 +992,57 @@ window.hideLoading = hideLoading;
   </div>
 </div>
 
+
+<!-- MODAL REAGENDAR -->
+<div id="modal-reagendar" class="modal-ov">
+  <div class="modal-box" style="max-width:360px">
+    <div class="modal-head">
+      <h3>↻ Reagendar Tarefa</h3>
+      <button class="btn-mc" onclick="fecharReagendar()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">A tarefa ficará marcada como reagendada no histórico.</p>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Nova Data</label>
+        <input id="reag-data" type="date" style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="fecharReagendar()">Cancelar</button>
+      <button class="btn-pri" onclick="salvarReagendar()">Reagendar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PRÓXIMO CONTATO -->
+<div id="modal-proximo-contato" class="modal-ov">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <h3>📅 Agendar Próximo Contato</h3>
+      <button class="btn-mc" onclick="fecharProximoContato()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Tarefa resolvida para:</p>
+      <p id="pc-nome" style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:14px"></p>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Data (+21 dias sugerido)</label>
+        <input id="pc-data" type="date" style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">O que fazer</label>
+        <textarea id="pc-texto" placeholder="Ex: Verificar se houve reposição de estoque..." rows="3" style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Vendedor</label>
+        <select id="pc-vend" style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box"></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="fecharProximoContato()">Pular</button>
+      <button id="pc-btn" class="btn-pri" onclick="salvarProximoContato()">Agendar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
