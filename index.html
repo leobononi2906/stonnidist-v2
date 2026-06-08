@@ -916,5 +916,81 @@ window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 </script>
 <script src="crm.js?v=20260607e"></script>
+
+<!-- MODAL EDITAR VÍNCULO ERP -->
+<div id="modal-edit-vinc-erp" class="modal-ov">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <h3>✎ Editar Vínculo ERP</h3>
+      <button class="btn-mc" onclick="fecharEditVincERP()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Corrija o nome ou CNPJ do cliente ERP vinculado. Não altera o ID do ERP.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Nome do Cliente ERP</label>
+        <input id="ev-nome" type="text" placeholder="Nome do cliente..."
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">CNPJ/CPF</label>
+        <input id="ev-cnpj" type="text" placeholder="00.000.000/0000-00"
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="fecharEditVincERP()">Cancelar</button>
+      <button class="btn-pri" onclick="salvarEditVincERP()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR CLIENTE CRM -->
+<div id="modal-edit-cliente" class="modal-ov">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-head">
+      <h3>✎ Editar Cliente</h3>
+      <button class="btn-mc" onclick="fecharEditarCliente()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+        Edita os dados cadastrais do cliente no CRM. Clientes vinculados ao ERP têm dados atualizados automaticamente pelo sync.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Nome</label>
+        <input id="ec-nome" type="text" placeholder="Nome do cliente..."
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:12px">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Cidade</label>
+          <input id="ec-cidade" type="text" placeholder="Cidade..."
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">UF</label>
+          <input id="ec-uf" type="text" placeholder="PR" maxlength="2"
+            style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">CNPJ/CPF</label>
+        <input id="ec-cnpj" type="text" placeholder="00.000.000/0000-00"
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="margin-bottom:6px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">E-mail</label>
+        <input id="ec-email" type="email" placeholder="email@empresa.com"
+          style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" onclick="fecharEditarCliente()">Cancelar</button>
+      <button class="btn-pri" onclick="salvarEditarCliente()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
