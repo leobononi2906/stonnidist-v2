@@ -429,7 +429,7 @@ async function loadToday() {
 }
 async function loadDetalhe(id) {
   const [notas, tels, vincErp] = await Promise.all([
-    sbQ('atac_crm_notas', `select=*&id_cliente=eq.${id}&order=data_criacao.desc`),
+    sbQ('atac_crm_notas', `select=*,reagendado,qtd_reagendamentos&id_cliente=eq.${id}&order=data_criacao.desc`),
     sbQ('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`),
     sbQ('atac_cliente_vinculos', `select=id,id_cliente_erp,nome_cliente_erp,cnpj_cpf_erp&id_cliente_crm=eq.${id}`),
   ]);
@@ -1128,7 +1128,10 @@ function renderDrawer(){
           <div class="nota-card${n.resolvido?' done':''}">
             <div class="nc-head">
               <div style="display:flex;align-items:center;gap:6px">${tipoBdg(n.tipo)}<span class="nc-meta">${fmtD(n.data_criacao)}${n.criado_por?' · '+n.criado_por:''}</span></div>
-              ${!n.resolvido?`<button class="btn-res" onclick="resolverNota('${n.id}',false)">✓ Resolver</button>`:'<span style="font-size:10px;color:#334155">Resolvido</span>'}
+              <div style="display:flex;gap:4px;align-items:center">
+                ${!n.resolvido && n.tipo==='TAREFA' && !n.reagendado ? `<button style="font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text-secondary);cursor:pointer" onclick="reagendarNotaDrawer('${n.id}','${n.data_prevista||''}',${n.qtd_reagendamentos||0})">↻</button>` : ''}
+                ${!n.resolvido?`<button class="btn-res" onclick="resolverNotaDrawer('${n.id}',${c.id_cliente},'${esc(c.nome_cliente)}',${c.id_vendedor_responsavel||'null'})">✓ Resolver</button>`:'<span style="font-size:10px;color:#334155">Resolvido</span>'}
+              </div>
             </div>
             <p class="nc-txt">${n.texto}</p>
             ${n.data_prevista?`<p class="nc-date">📅 ${fmtD(n.data_prevista)}</p>`:''}
@@ -1352,12 +1355,50 @@ async function delUV(id){
 async function resolverNota(id,isToday){
   await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
   toast('✅ Resolvido!');
-  // Recarregar alertas e overdues
   await Promise.all([loadOverdue(), renderAlertasCRM()]);
   if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
   renderLista();
-  // Se agenda está aberta, recarregar
   if(S.mainTab==='agenda') renderAgendaCRM();
+}
+
+// Resolver nota a partir do drawer — abre modal próximo contato
+async function resolverNotaDrawer(id, idCliente, nomeCliente, idVendedor) {
+  await sbUpdate('atac_crm_notas','id',id,{resolvido:true,reagendado:false,data_resolucao:new Date().toISOString()});
+  toast('✅ Resolvido!');
+  await Promise.all([loadOverdue(), renderAlertasCRM()]);
+  if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
+  renderLista();
+  // Abrir modal próximo contato
+  const m = document.getElementById('modal-proximo-contato');
+  if (!m) return;
+  m.dataset.idcliente = idCliente || '';
+  m.dataset.nomecliente = nomeCliente || '';
+  const dt = new Date();
+  dt.setDate(dt.getDate() + 21);
+  document.getElementById('pc-data').value = dt.toISOString().split('T')[0];
+  document.getElementById('pc-texto').value = '';
+  document.getElementById('pc-nome').textContent = nomeCliente || '';
+  // Pré-selecionar vendedor do cliente
+  const sel = document.getElementById('pc-vend');
+  if(sel) {
+    sel.innerHTML = '<option value="">Sem vendedor</option>' +
+      S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===idVendedor?' selected':''}>${v.nome_vendedor}</option>`).join('');
+  }
+  m.classList.add('open');
+}
+
+// Reagendar nota a partir do drawer
+function reagendarNotaDrawer(id, dataAtual, qtdReag) {
+  const m = document.getElementById('modal-reagendar');
+  if (!m) return;
+  m.dataset.notaid = id;
+  m.dataset.qtdreag = qtdReag;
+  // Usar vendedor vinculado ao cliente atual
+  m.dataset.idvendedor = S.selCliente?.id_vendedor_responsavel || '';
+  const dt = new Date((dataAtual || new Date().toISOString().split('T')[0]) + 'T12:00:00');
+  dt.setDate(dt.getDate() + 7);
+  document.getElementById('reag-data').value = dt.toISOString().split('T')[0];
+  m.classList.add('open');
 }
 async function salvarNota(cId,cNome,vId,vNome){
   const tipo=document.getElementById('nota-tipo')?.value;
@@ -2382,9 +2423,12 @@ async function resolverNotaAgenda(id, idCliente, nomeCliente) {
   document.getElementById('pc-data').value = dt.toISOString().split('T')[0];
   document.getElementById('pc-texto').value = '';
   document.getElementById('pc-nome').textContent = nomeCliente || '';
+  // Buscar vendedor vinculado ao cliente
+  const clienteRef = [...S.carteira, ...S.prospeccao, ...S.prospGeral].find(c => String(c.id_cliente) === String(idCliente));
+  const vendCliente = clienteRef?.id_vendedor_responsavel || F.vendedorId;
   const sel = document.getElementById('pc-vend');
   if(sel) sel.innerHTML = '<option value="">Sem vendedor</option>' +
-    S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===F.vendedorId?' selected':''}>${v.nome_vendedor}</option>`).join('');
+    S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===vendCliente?' selected':''}>${v.nome_vendedor}</option>`).join('');
   m.classList.add('open');
 }
 
@@ -2478,6 +2522,8 @@ window.toggleVend=toggleVend;
 window.selCliente=selCliente;
 window.closeDrawer=closeDrawer;
 window.resolverNota=resolverNota;
+window.resolverNotaDrawer=resolverNotaDrawer;
+window.reagendarNotaDrawer=reagendarNotaDrawer;
 window.salvarNota=salvarNota;
 window.togglePhForm=togglePhForm;
 window.savePhone=savePhone;
