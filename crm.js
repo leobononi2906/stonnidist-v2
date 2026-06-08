@@ -584,9 +584,23 @@ function renderCRM() {
   renderLista();
 }
 
-// Alertas inteligentes: hoje, atrasadas, próximas (substitui painel "atividades de hoje")
+// Estado do painel de alertas (colapsável, persiste na sessão)
+let alertasOcultos = false;
+
+// Alertas inteligentes: hoje, atrasadas, próximas — com botão Ocultar
 async function renderAlertasCRM() {
   const el = document.getElementById('crm-alertas'); if(!el)return;
+
+  // Se oculto, mostra só mini-chip
+  if (alertasOcultos) {
+    el.innerHTML = `
+      <div style="padding:6px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text-muted)">📋 Painel de alertas oculto</span>
+        <button onclick="toggleAlertasCRM()" style="font-size:11px;font-weight:600;color:var(--blue-mid);background:none;border:none;cursor:pointer;padding:2px 6px">Mostrar</button>
+      </div>`;
+    return;
+  }
+
   const hoje = new Date().toISOString().split('T')[0];
   const proxData = new Date(); proxData.setDate(proxData.getDate()+7);
   const proxStr = proxData.toISOString().split('T')[0];
@@ -606,44 +620,49 @@ async function renderAlertasCRM() {
 
   if (!nAtr && !nHoje && !nProx) { el.innerHTML=''; return; }
 
-  // Renderiza alertas como chips clicáveis no topo
   el.innerHTML = `
-    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--border)">
-
+    <div style="border-bottom:1px solid var(--border)">
+      <!-- Cabeçalho sempre visível com chips de resumo + botão ocultar -->
+      <div style="padding:7px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--surface2)">
+        ${nHoje>0?`<span style="background:var(--blue-pale);color:var(--blue-dark);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">📌 ${nHoje} hoje</span>`:''}
+        ${nAtr>0?`<span onclick="setMainTab('agenda')" style="background:var(--red-bg);color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;cursor:pointer">⚠ ${nAtr} atrasada${nAtr>1?'s':''}</span>`:''}
+        ${nProx>0?`<span style="background:var(--surface);color:var(--text-muted);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid var(--border)">📅 ${nProx} esta semana</span>`:''}
+        <button onclick="toggleAlertasCRM()" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:2px 6px;flex-shrink:0">Ocultar ✕</button>
+      </div>
+      <!-- Atividades de hoje expandidas -->
       ${nHoje>0?`
-      <div style="background:var(--blue-pale);border:1px solid rgba(0,119,204,.2);border-radius:var(--radius-sm);padding:8px 12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:11px;font-weight:700;color:var(--blue-dark)">📌 Atividades de Hoje (${nHoje})</span>
-        </div>
+      <div style="padding:6px 12px 8px">
         ${(Array.isArray(deHoje)?deHoje:[]).map(t=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-radius:var(--radius-sm);padding:5px 8px;margin-bottom:3px;gap:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid rgba(0,119,204,.15);border-radius:var(--radius-sm);padding:5px 8px;margin-bottom:3px;gap:6px">
             <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1">
               ${tipoBdg(t.tipo)}
               <span style="font-size:12px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.nome_cliente}</span>
+              <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.texto||''}</span>
             </div>
-            <button onclick="resolverNota('${t.id}',true)" class="btn-res" style="flex-shrink:0;font-size:10px">✓ Resolver</button>
+            <button onclick="resolverNota('${t.id}',true)" class="btn-res" style="flex-shrink:0;font-size:10px;white-space:nowrap">✓ Resolver</button>
           </div>`).join('')}
-      </div>`:''}
-
-      ${nAtr>0?`
-      <div style="background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:8px 12px;cursor:pointer" onclick="setMainTab('agenda')" title="Ver agenda">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:15px">⚠️</span>
-          <span style="font-size:12px;font-weight:700;color:var(--red)">${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
+        ${nAtr>0?`<div onclick="setMainTab('agenda')" style="display:flex;align-items:center;gap:6px;background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:5px 10px;cursor:pointer;margin-top:2px">
+          <span style="font-size:12px;font-weight:700;color:var(--red)">⚠ ${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--red);font-weight:600">Ver agenda →</span>
+        </div>`:''}
+      </div>`
+      :nAtr>0?`
+      <div style="padding:6px 12px 8px">
+        <div onclick="setMainTab('agenda')" style="display:flex;align-items:center;gap:6px;background:var(--red-bg);border:1px solid rgba(217,48,37,.15);border-radius:var(--radius-sm);padding:7px 10px;cursor:pointer">
+          <span style="font-size:12px;font-weight:700;color:var(--red)">⚠ ${nAtr} atividade${nAtr>1?'s':''} atrasada${nAtr>1?'s':''}</span>
           <span style="margin-left:auto;font-size:10px;color:var(--red);font-weight:600">Ver agenda →</span>
         </div>
-      </div>`:''}
-
-      ${nProx>0&&!nHoje?`
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 12px">
-        <span style="font-size:11px;color:var(--text-muted)">📅 Próximas atividades nos próximos 7 dias: </span>
-        <span style="font-size:11px;font-weight:700;color:var(--orange)">${nProx}</span>
-      </div>`:''}
-
+      </div>`:''
+      }
     </div>`;
 }
 
-// Mantido para compatibilidade com resolverNota (hoje flag)
+function toggleAlertasCRM() {
+  alertasOcultos = !alertasOcultos;
+  renderAlertasCRM();
+}
+
+// Mantido para compatibilidade
 function renderToday(tasks) {}
 
 function renderUmbler() {
@@ -1808,34 +1827,45 @@ function renderDiaPanel() {
   const ePassado = dStr < hoje;
 
   el.innerHTML = `
-    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <!-- Header do painel do dia -->
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:var(--surface)">
       <div>
-        <p style="font-size:13px;font-weight:700;color:var(--text-primary)">${dLabel}${eHoje?' — Hoje':''}</p>
-        <p style="font-size:11px;color:var(--text-muted)">${tarefas.length} atividade${tarefas.length!==1?'s':''}</p>
+        <p style="font-size:14px;font-weight:700;color:var(--text-primary)">${dLabel}</p>
+        <p style="font-size:11px;color:${eHoje?'var(--blue-mid)':ePassado&&tarefas.some(t=>!t.resolvido)?'var(--red)':'var(--text-muted)'};font-weight:600">
+          ${eHoje?'Hoje · ':''}${tarefas.length} atividade${tarefas.length!==1?'s':''}${tarefas.filter(t=>!t.resolvido).length&&tarefas.filter(t=>!t.resolvido).length<tarefas.length?' ('+tarefas.filter(t=>t.resolvido).length+' resolvida'+(tarefas.filter(t=>t.resolvido).length>1?'s':'')+')':''}
+        </p>
       </div>
       <button onclick="abrirNovaAtividade('${dStr}')"
-        style="font-size:11px;font-weight:700;padding:5px 10px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer">
+        style="font-size:12px;font-weight:700;padding:6px 14px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap">
         + Nova
       </button>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:8px">
-      ${tarefas.length ? tarefas.map(t=>`
-        <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${t.resolvido?'var(--green)':ePassado&&!t.resolvido?'var(--red)':'var(--blue-mid)'};border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            ${tipoBdg(t.tipo)}
-            ${!t.resolvido?`<button onclick="resolverNotaAgenda('${t.id}')" style="font-size:10px;color:var(--green);background:none;border:none;cursor:pointer;font-weight:700">✓</button>`:`<span style="font-size:10px;color:var(--green);font-weight:600">✓ Feito</span>`}
+    <!-- Lista de atividades -->
+    <div style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+      ${tarefas.length ? tarefas.map(t=>{
+        const isVenc = !t.resolvido && ePassado;
+        const borderColor = t.resolvido ? 'var(--green)' : isVenc ? 'var(--red)' : 'var(--blue-mid)';
+        return `
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${borderColor};border-radius:var(--radius-sm);padding:12px 14px;${t.resolvido?'opacity:.7':''}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              ${tipoBdg(t.tipo)}
+              ${isVenc?`<span style="font-size:10px;color:var(--red);font-weight:700;background:var(--red-bg);padding:1px 6px;border-radius:10px">Atrasada</span>`:''}
+              ${t.resolvido?`<span style="font-size:10px;color:var(--green);font-weight:700">✓ Resolvida</span>`:''}
+            </div>
+            ${!t.resolvido?`<button onclick="resolverNotaAgenda('${t.id}')"
+              style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--green-bg);color:var(--green);border:1.5px solid rgba(15,157,110,.3);border-radius:var(--radius-sm);cursor:pointer;flex-shrink:0;white-space:nowrap">
+              ✓ Resolver
+            </button>`:''}
           </div>
-          <p style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:2px;line-height:1.3">${t.nome_cliente}</p>
-          <p style="font-size:11px;color:var(--text-secondary)">${t.texto||'—'}</p>
-          ${t.criado_por?`<p style="font-size:10px;color:var(--text-muted);margin-top:3px">Por: ${t.criado_por}</p>`:''}
-        </div>`).join('')
-      : `<div style="text-align:center;padding:24px 12px;color:var(--text-muted)">
-          <div style="font-size:28px;margin-bottom:8px">📅</div>
-          <p style="font-size:12px">Nenhuma atividade</p>
-          <button onclick="abrirNovaAtividade('${dStr}')"
-            style="font-size:11px;font-weight:600;color:var(--blue-mid);background:none;border:none;cursor:pointer;margin-top:6px;text-decoration:underline">
-            + Adicionar atividade
-          </button>
+          <p style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;line-height:1.3">${t.nome_cliente}</p>
+          <p style="font-size:12px;color:var(--text-secondary);line-height:1.5">${t.texto||'—'}</p>
+          ${t.criado_por?`<p style="font-size:10px;color:var(--text-muted);margin-top:5px">Por: ${t.criado_por}</p>`:''}
+        </div>`;}).join('')
+      : `<div style="text-align:center;padding:32px 16px;color:var(--text-muted)">
+          <div style="font-size:32px;margin-bottom:10px">📅</div>
+          <p style="font-size:13px;font-weight:500">Nenhuma atividade</p>
+          <p style="font-size:11px;margin-top:4px">Clique em + Nova para adicionar</p>
         </div>`}
     </div>`;
 }
@@ -1945,6 +1975,7 @@ window.abrirNovaAtividade=abrirNovaAtividade;
 window.fecharNovaAtividade=fecharNovaAtividade;
 window.salvarNovaAtividade=salvarNovaAtividade;
 window.resolverNotaAgenda=resolverNotaAgenda;
+window.toggleAlertasCRM=toggleAlertasCRM;
 window.naoComercialConfig=naoComercialConfig;
 window.applyPeriod=onPeriodChange; // alias para compatibilidade
 window.onPeriodChange=onPeriodChange;
