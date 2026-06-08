@@ -27,7 +27,7 @@ const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
-  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(),  // vínculos ERP do cliente aberto
+  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null,  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   subFilter: 'todos',
@@ -494,6 +494,18 @@ async function loadDetalhe(id) {
     if (!p.id_doc || pedSeen.has(p.id_doc)) return false;
     pedSeen.add(p.id_doc); return true;
   });
+
+  // Buscar títulos financeiros em aberto (vencidos) — todos os IDs vinculados
+  const finData = await sbQ('cob_titulos_com_cliente',
+    `select=id,saldo_real,dt_vencimento,dias_atraso,num_doc,chdados&id_contato=in.(${idsParam})&order=dt_vencimento.asc`);
+  const fins = Array.isArray(finData) ? finData : [];
+  if (fins.length > 0) {
+    const totalAberto = fins.reduce((s, f) => s + (f.saldo_real || 0), 0);
+    const maxAtraso = Math.max(...fins.map(f => f.dias_atraso || 0));
+    S.finAlerta = { qtd: fins.length, total: totalAberto, maxAtraso, titulos: fins };
+  } else {
+    S.finAlerta = null;
+  }
 }
 
 // Carregar todos os clientes vinculados a um telefone (vínculos múltiplos)
@@ -1038,6 +1050,16 @@ function renderDrawer(){
       </p>
     </div>` : ''}
 
+    ${S.finAlerta ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:var(--radius-sm);margin-bottom:2px">
+      <span style="font-size:18px">⚠️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:#DC2626">Pendência Financeira</div>
+        <div style="font-size:11px;color:#991B1B;margin-top:1px">
+          ${S.finAlerta.qtd} título${S.finAlerta.qtd>1?'s':''} em aberto · ${fmt(S.finAlerta.total)} · maior atraso: ${S.finAlerta.maxAtraso}d
+        </div>
+      </div>
+    </div>` : ''}
     <div class="kmini-row">
       <div class="kmini"><div class="l">Faturamento</div><div class="v">${fmt(fat)}</div></div>
       <div class="kmini"><div class="l">Pedidos</div><div class="v">${qtd}</div></div>
