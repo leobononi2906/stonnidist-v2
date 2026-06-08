@@ -855,6 +855,10 @@ function renderDrawer(){
           style="font-size:11px;font-weight:600;padding:5px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:var(--surface2);cursor:pointer;display:flex;align-items:center;gap:4px">
           🔗 Vincular ao ERP
         </button>
+        <button onclick="abrirEditarCliente(${c.id_cliente},'${esc(c.nome_cliente)}')" 
+          style="font-size:11px;font-weight:600;padding:5px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-secondary);background:var(--surface2);cursor:pointer;display:flex;align-items:center;gap:4px">
+          ✎ Editar Cliente
+        </button>
       </div>
     </div>
 
@@ -875,10 +879,16 @@ function renderDrawer(){
               ${v.cnpj_cpf_erp?`<span style="margin-left:8px">${fmtC(v.cnpj_cpf_erp)}</span>`:''}
             </div>
           </div>
-          <button onclick="desvincularERP('${v.id}',${c.id_cliente},'${esc(v.nome_cliente_erp||'')}')"
-            style="font-size:11px;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--red);background:var(--red-bg);cursor:pointer;font-weight:500;flex-shrink:0">
-            ✕ Desvincular
-          </button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="editarVincERP('${v.id}','${esc(v.nome_cliente_erp||'')}','${esc(v.cnpj_cpf_erp||'')}',${c.id_cliente})"
+              style="font-size:11px;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--blue-mid);background:var(--blue-pale);cursor:pointer;font-weight:500">
+              ✎ Editar
+            </button>
+            <button onclick="desvincularERP('${v.id}',${c.id_cliente},'${esc(v.nome_cliente_erp||'')}')"
+              style="font-size:11px;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--red);background:var(--red-bg);cursor:pointer;font-weight:500">
+              ✕ Remover
+            </button>
+          </div>
         </div>`).join('')}
       <p style="font-size:10px;color:var(--text-muted);margin-top:4px">
         💡 Pedidos e datas consideram o mais recente entre todos os ERP vinculados
@@ -1436,6 +1446,85 @@ async function desvincularERP(vincId, crmId, erpNome) {
   renderDrawer();
 }
 
+
+// ── EDITAR VÍNCULO ERP ────────────────────────────────────────
+function editarVincERP(vincId, nomeAtual, cnpjAtual, crmId) {
+  const m = document.getElementById('modal-edit-vinc-erp');
+  if (!m) return;
+  m.dataset.vincid = vincId;
+  m.dataset.crmid = crmId;
+  document.getElementById('ev-nome').value = nomeAtual || '';
+  document.getElementById('ev-cnpj').value = cnpjAtual || '';
+  m.classList.add('open');
+}
+function fecharEditVincERP() { document.getElementById('modal-edit-vinc-erp')?.classList.remove('open'); }
+
+async function salvarEditVincERP() {
+  const m = document.getElementById('modal-edit-vinc-erp');
+  if (!m) return;
+  const vincId = m.dataset.vincid;
+  const crmId = Number(m.dataset.crmid);
+  const nome = document.getElementById('ev-nome').value.trim();
+  const cnpj = document.getElementById('ev-cnpj').value.trim();
+  if (!nome) { toast('Nome obrigatório', 'err'); return; }
+  const r = await sbUpdate('atac_cliente_vinculos', 'id', vincId, {
+    nome_cliente_erp: nome.toUpperCase(),
+    cnpj_cpf_erp: cnpj || null
+  });
+  if (!r.ok) { toast('Erro ao salvar', 'err'); return; }
+  toast('Vínculo atualizado!');
+  fecharEditVincERP();
+  await loadDetalhe(crmId);
+  renderDrawer();
+}
+
+// ── EDITAR CLIENTE CRM ────────────────────────────────────────
+function abrirEditarCliente(cId, cNome) {
+  const m = document.getElementById('modal-edit-cliente');
+  if (!m) return;
+  m.dataset.cid = cId;
+  const c = S.selCliente;
+  const dim = S.dimMap.get(cId) || {};
+  document.getElementById('ec-nome').value = c?.nome_cliente || cNome || '';
+  document.getElementById('ec-cidade').value = dim.cidade || c?.cidade || '';
+  document.getElementById('ec-uf').value = dim.uf || c?.uf || '';
+  document.getElementById('ec-cnpj').value = dim.cnpj_cpf || c?.cnpj_cpf || '';
+  document.getElementById('ec-email').value = dim.email || c?.email || '';
+  m.classList.add('open');
+}
+function fecharEditarCliente() { document.getElementById('modal-edit-cliente')?.classList.remove('open'); }
+
+async function salvarEditarCliente() {
+  const m = document.getElementById('modal-edit-cliente');
+  if (!m) return;
+  const cId = Number(m.dataset.cid);
+  const nome = document.getElementById('ec-nome').value.trim();
+  const cidade = document.getElementById('ec-cidade').value.trim();
+  const uf = document.getElementById('ec-uf').value.trim().toUpperCase();
+  const cnpj = document.getElementById('ec-cnpj').value.trim();
+  const email = document.getElementById('ec-email').value.trim();
+  if (!nome) { toast('Nome obrigatório', 'err'); return; }
+  const r = await sbUpdate('atac_clientes', 'id_cliente', cId, {
+    nome_cliente: nome.toUpperCase(),
+    cidade: cidade || null,
+    uf: uf || null,
+    cnpj_cpf: cnpj || null,
+    email: email || null,
+    atualizado_em: new Date().toISOString()
+  });
+  if (!r.ok) { toast('Erro ao salvar', 'err'); return; }
+  // Atualiza dimMap local
+  const dim = S.dimMap.get(cId) || {};
+  S.dimMap.set(cId, { ...dim, cidade, uf, cnpj_cpf: cnpj, email });
+  if (S.selCliente) S.selCliente.nome_cliente = nome.toUpperCase();
+  toast('Cliente atualizado!');
+  fecharEditarCliente();
+  await loadDetalhe(cId);
+  renderDrawer();
+  await Promise.all([loadCarteira(), loadProspeccao()]);
+  renderLista();
+}
+
 // ── MODAL ALTERAR VENDEDOR ────────────────────────────────────
 function abrirModalVendedor(cId, cNome, vendAtualId) {
   const m = document.getElementById('modal-alterar-vendedor');
@@ -1746,16 +1835,30 @@ async function removerVincTel(phId) {
 
 // ── DESCARTAR CLIENTE (Prospecção Geral) ──────────────────────
 async function descartarCliente(id, nome) {
-  const motivo = prompt(`Motivo para descartar "${nome}":
-(ex: Não tem interesse, Fora de área, Duplicado)`);
-  if (motivo === null) return; // cancelou
+  const motivo = prompt(`Motivo para descartar "${nome}":\n(ex: Não tem interesse, Fora de área, Duplicado)`);
+  if (motivo === null) return;
   if (!motivo.trim()) { toast('Informe o motivo', 'err'); return; }
-  // Marca como descartado em atac_crm_clientes (se tiver campo) ou em atac_clientes_historico
-  await sbUpdate('atac_crm_clientes', 'id_cliente', id, { descartado: true, motivo_descarte: motivo });
+
+  // Verifica se cliente já existe na atac_clientes
+  const existe = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${id}`);
+  if (Array.isArray(existe) && existe.length > 0) {
+    await sbUpdate('atac_clientes', 'id_cliente', id, {
+      situacao: 'I', nao_comercial: true, atualizado_em: new Date().toISOString()
+    });
+  } else {
+    await sbInsert('atac_clientes', {
+      id_cliente: id, nome_cliente: nome, situacao: 'I',
+      nao_comercial: true, origem: 'DESCARTADO', criado_em: new Date().toISOString()
+    });
+  }
+  // Remove vínculo de vendedor se houver
+  await sbDel('atac_cliente_vendedor', 'id_cliente', id);
   toast(`${nome} descartado`);
-  // Recarrega
-  await loadProspeccao();
+  // Remove da lista local imediatamente
+  S.prospeccao = S.prospeccao.filter(c => c.id_cliente !== id);
+  S.prospGeral = S.prospGeral.filter(c => c.id_cliente !== id);
   renderLista();
+  loadProspeccao();
 }
 
 // ── ASSUMIR CLIENTE (Prospecção Geral → Carteira do Vendedor) ──
@@ -2157,6 +2260,12 @@ window.fecharVincularERP=fecharVincularERP;
 window.searchVincERP=searchVincERP;
 window.confirmarVincERP=confirmarVincERP;
 window.desvincularERP=desvincularERP;
+window.editarVincERP=editarVincERP;
+window.fecharEditVincERP=fecharEditVincERP;
+window.salvarEditVincERP=salvarEditVincERP;
+window.abrirEditarCliente=abrirEditarCliente;
+window.fecharEditarCliente=fecharEditarCliente;
+window.salvarEditarCliente=salvarEditarCliente;
 window.abrirModalVendedor=abrirModalVendedor;
 window.fecharModalVendedor=fecharModalVendedor;
 window.salvarModalVendedor=salvarModalVendedor;
