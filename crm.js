@@ -1516,22 +1516,93 @@ function setProspTab(pt){
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
 function setPSort(v){S.pSort=v;renderLista();}
-async function handleSearch(v){
-  S.search=v;
-  if(S.mainTab==='agenda') setMainTab('carteira');
+function handleSearch(v){
+  S.search = v;
+  // Se está na agenda, muda para carteira sem resetar a busca
+  if (S.mainTab === 'agenda') {
+    S.mainTab = 'carteira';
+    document.getElementById('tab-c')?.classList.add('on');
+    document.getElementById('tab-a')?.classList.remove('on');
+    const crmWrap = document.getElementById('crm-inner-wrap');
+    const agPanel = document.getElementById('crm-agenda-panel');
+    if (crmWrap) crmWrap.style.display = 'flex';
+    if (agPanel) agPanel.style.display = 'none';
+  }
 
-  // Se tem texto e a lista local está vazia (não carregou ainda), buscar no Supabase
-  const lista = S.mainTab==='carteira' ? S.carteira :
-                (S.prospTab==='geral' ? S.prospGeral : S.prospeccao);
-
-  if (v.trim().length >= 2 && lista.length === 0) {
-    // Dados ainda carregando — aguarda
+  // Com texto: buscar no Supabase diretamente (não depende da lista local)
+  if (v.trim().length >= 2) {
+    buscarNoSupabase(v.trim());
+  } else {
+    // Sem texto: volta para a lista local completa
     renderLista();
+  }
+}
+
+// Busca diretamente no Supabase — elimina dependência do S.carteira local
+async function buscarNoSupabase(q) {
+  const el = document.getElementById('cl-list');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-msg" style="padding:16px"><div class="spinner" style="margin:0 auto 8px"></div>Buscando...</div>';
+
+  const qEnc = encodeURIComponent(q);
+  const tab = S.mainTab === 'carteira' ? 'carteira' : (S.prospTab === 'geral' ? 'geral' : 'prosp');
+  
+  let params;
+  if (tab === 'geral') {
+    params = `select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_compra.desc.nullslast&limit=50`;
+  } else if (tab === 'prosp') {
+    params = `select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=not.is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_interacao.desc.nullslast&limit=50`;
+    if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  } else {
+    // Carteira: busca sem filtro de status para pegar todos
+    params = `select=*&nome_cliente=ilike.*${qEnc}*&order=dias_sem_interacao.desc.nullslast&limit=50`;
+    if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+  }
+
+  const data = await sbQ('atac_crm_clientes', params);
+  let results = Array.isArray(data) ? data : [];
+
+  // Filtrar carteira vs prospecção nos resultados
+  if (tab === 'carteira') {
+    results = results.filter(c => getStatus(c) !== 'PROSPECCAO');
+    // Aplicar subfiltro
+    if (S.subFilter !== 'todos') {
+      results = results.filter(c => {
+        const st = getStatus(c);
+        if (S.subFilter === 'ativo')    return st === 'ATIVO';
+        if (S.subFilter === 'atencao')  return st === 'ATENCAO';
+        if (S.subFilter === 'em_risco') return st === 'PERDIDO';
+        return true;
+      });
+    }
+  }
+
+  if (!results.length) {
+    el.innerHTML = `<div class="empty-msg">Nenhum cliente encontrado para "<strong>${q}</strong>"</div>`;
     return;
   }
 
-  // Busca local (já carregado)
-  renderLista();
+  // Renderizar igual ao renderLista mas com esses resultados
+  el.innerHTML = results.map(c => {
+    const st = getStatus(c);
+    const dim = S.dimMap.get(c.id_cliente) || {};
+    const sel = S.selId === c.id_cliente;
+    const dc = c.dias_sem_compra ?? dias(c.ultima_compra);
+    return `<button class="cl-item${sel?' sel':''}" onclick="selCliente(${c.id_cliente})">
+      <div class="cl-row1">
+        <span class="cl-nome">${c.nome_cliente}</span>
+        ${bdg(st)}
+        ${dc>=30?'<span style="color:var(--orange);font-size:12px;flex-shrink:0">⚠</span>':''}
+        ${S.overdueIds.has(c.id_cliente)?'<span style="color:var(--red);font-size:12px;flex-shrink:0">🔔</span>':''}
+      </div>
+      ${semaforo(c)}
+      <div class="cl-row2">${sN(c.nome_vendedor_responsavel)}</div>
+      <div class="cl-row3">
+        <span class="cl-row3-l">${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:'')+'  ':''}Últ: ${c.ultima_compra?fmtD(c.ultima_compra):'—'}</span>
+        ${(dim.cnpj_cpf||c.cnpj_cpf)?`<span class="cl-cnpj">${fmtC(dim.cnpj_cpf||c.cnpj_cpf)}</span>`:''}
+      </div>
+    </button>`;
+  }).join('');
 }
 
 // ── MODAL NOVO CONTATO UMBLER → PROSPECÇÃO ────────────────────
@@ -2042,6 +2113,7 @@ window.setSub=setSub;
 window.setPSub=setPSub;
 window.setPSort=setPSort;
 window.handleSearch=handleSearch;
+window.buscarNoSupabase=buscarNoSupabase;
 window.toggleVend=toggleVend;
 window.selCliente=selCliente;
 window.closeDrawer=closeDrawer;
