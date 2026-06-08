@@ -854,9 +854,10 @@ function renderDrawer(){
     ${S.vinculosERP.length ? `
     <div>
       <div class="sec-head" style="margin-bottom:6px">
-        <span class="sec-lbl">🔗 Clientes ERP Vinculados (${S.vinculosERP.length})</span>
+        <span class="sec-lbl">🔗 Códigos ERP Vinculados (${S.vinculosERP.length})</span>
         <button onclick="abrirVincularERP(${c.id_cliente},'${esc(c.nome_cliente)}')" class="link-add">+ Adicionar</button>
       </div>
+      <p style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Pedidos, última compra e status consideram o mais recente entre todos os códigos.</p>
       ${S.vinculosERP.map(v=>`
         <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:6px;gap:8px">
           <div style="flex:1;min-width:0">
@@ -1291,7 +1292,11 @@ async function searchVincERP() {
   if (!q || q.length < 2) return;
   const el = document.getElementById('erp-results');
   if (!el) return;
-  el.innerHTML = '<p class="empty-msg" style="padding:8px">Buscando...</p>';
+  // Aviso de múltiplos vínculos
+  const jaVinc = S.vinculosERP.length;
+  el.innerHTML = `<p style="padding:8px;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border);margin-bottom:6px">
+    ${jaVinc > 0 ? `<strong>${jaVinc} código${jaVinc>1?'s':''} ERP já vinculado${jaVinc>1?'s':''}</strong> — pode adicionar mais. Pedidos serão agregados.` : 'Buscando...'}
+  </p>`;
 
   // Busca em atac_clientes (que é a tabela certa com os clientes do ERP)
   const qNum = isNaN(q) ? 0 : parseInt(q);
@@ -1337,73 +1342,69 @@ async function confirmarVincERP(erpId, erpNome, cnpj) {
   const crmId = Number(m.dataset.crmid);
   const crmNome = m.dataset.crmnome;
 
-  // Verificar se já existe
+  // Verificar se já existe este ERP vinculado
   if (S.vinculosERP.some(v => v.id_cliente_erp === erpId)) {
-    toast('Já vinculado!', 'err'); return;
+    toast('Este código ERP já está vinculado!', 'err'); return;
   }
 
-  const btn = document.getElementById('erp-confirmar');
-  // Sem botão de confirmação — o click no item já confirma
+  // Mostrar loading no modal
+  const res = document.getElementById('erp-results');
+  if (res) res.innerHTML = '<p class="empty-msg"><span class="spin">⟳</span> Vinculando...</p>';
 
-  // 1. Auto-insert em atac_clientes se não existe
-  const existe = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${erpId}&limit=1`);
-  if (!Array.isArray(existe) || !existe.length) {
-    const dim = await sbQ('vw_dim_cliente',
-      `select=id_cliente,nome_cliente,cnpj,cpf,telefone1,telefone2,cidade,uf,email,situacao&id_cliente=eq.${erpId}&limit=1`);
-    const d = Array.isArray(dim) ? dim[0] : null;
-    if (d) {
-      await sbInsert('atac_clientes', {
-        id_cliente: d.id_cliente, nome_cliente: d.nome_cliente,
-        cnpj_cpf: d.cnpj||d.cpf||null, telefone1: d.telefone1||null,
-        cidade: d.cidade||null, uf: d.uf||null, email: d.email||null,
-        situacao: d.situacao||'A', origem: 'VINCULO_ERP',
-      });
+  try {
+    // 1. Salvar vínculo em atac_cliente_vinculos
+    // Schema: id_cliente_crm, id_cliente_erp, nome_cliente_erp, cnpj_cpf_erp, vinculado_em, vinculado_por
+    const rVinc = await sbInsert('atac_cliente_vinculos', {
+      id_cliente_crm: crmId,
+      id_cliente_erp: erpId,
+      nome_cliente_erp: erpNome,
+      cnpj_cpf_erp: cnpj || null,
+      vinculado_por: 'CRM_MANUAL',
+    });
+
+    if (!rVinc.ok) {
+      const err = await rVinc.text();
+      // Pode ser conflito único — verificar
+      if (err.includes('duplicate') || err.includes('unique')) {
+        toast('Já vinculado (registro existente)', 'err');
+      } else {
+        toast(`Erro ao vincular: ${err.substring(0,80)}`, 'err');
+      }
+      if (res) res.innerHTML = '<p class="empty-msg">Digite para buscar...</p>';
+      return;
     }
-  }
 
-  // 2. Verificar última compra do ERP → determinar destino
-  const lastPed = await sbQ('vw_comercial_docs_faturados',
-    `select=data_faturamento,id_vendedor,nome_vendedor&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${erpId}&order=data_faturamento.desc&limit=1`);
-  const lp = Array.isArray(lastPed) ? lastPed[0] : null;
-  const diasUlt = lp?.data_faturamento ? dias(lp.data_faturamento) : 9999;
-  const isCarteira = diasUlt <= CFG.compra_risco_dias && lp;
+    // 2. Verificar última compra do ERP novo vinculado
+    const lastPed = await sbQ('vw_comercial_docs_faturados',
+      `select=data_faturamento,id_vendedor,nome_vendedor&tipo_saida=eq.DISTRIBUICAO&id_cliente=eq.${erpId}&order=data_faturamento.desc&limit=1`);
+    const lp = Array.isArray(lastPed) ? lastPed[0] : null;
+    const diasUlt = lp?.data_faturamento ? dias(lp.data_faturamento) : 9999;
+    const isCarteira = diasUlt <= CFG.compra_risco_dias && lp;
 
-  // 3. Salvar vínculo em atac_cliente_vinculos
-  await sbInsert('atac_cliente_vinculos', {
-    id_cliente_crm: crmId,
-    nome_cliente_crm: crmNome,
-    id_cliente_erp: erpId,
-    nome_cliente_erp: erpNome,
-    cnpj_cpf_erp: cnpj || null,
-  });
-
-  // 4. Se carteira, transferir vendedor da última venda
-  if (isCarteira && lp.id_vendedor) {
-    await sbUpsert('atac_cliente_vendedor', {
-      id_cliente: erpId, nome_cliente: erpNome,
-      id_vendedor_responsavel: lp.id_vendedor,
-      nome_vendedor_responsavel: lp.nome_vendedor,
-      atualizado_por: 'VINCULO_ERP',
-    }, 'id_cliente');
-  }
-
-  // 5. Copiar telefones do cliente CRM para o ERP
-  if (S.telefones.length) {
-    for (const t of S.telefones) {
-      await sbInsert('atac_cliente_telefones', {
-        id_cliente: erpId, nome_cliente: erpNome,
-        telefone: t.telefone, descricao: `ERP #${erpId}`,
-        principal: false,
-      });
+    // 3. Comparar com compras dos outros vínculos já existentes
+    // Se este ERP novo tem compra mais recente → atualizar vendedor responsável
+    if (isCarteira && lp.id_vendedor && S.vinculosERP.length === 0) {
+      // Primeiro vínculo ERP — atribuir vendedor da última venda
+      await sbUpsert('atac_cliente_vendedor', {
+        id_cliente: crmId,
+        nome_cliente: crmNome,
+        id_vendedor_responsavel: lp.id_vendedor,
+        nome_vendedor_responsavel: lp.nome_vendedor,
+        atualizado_por: 'VINCULO_ERP',
+      }, 'id_cliente');
     }
-  }
 
-  fecharVincularERP();
+    fecharVincularERP();
 
-  if (isCarteira) {
-    toast(`✅ Vinculado ao ERP → Carteira (${diasUlt}d desde última compra)`);
-  } else {
-    toast(`✅ Vinculado ao ERP → mantido na Prospecção`);
+    const msg = isCarteira
+      ? `✅ ${erpNome} (#${erpId}) vinculado — última compra há ${diasUlt}d`
+      : `✅ ${erpNome} (#${erpId}) vinculado — sem compras recentes`;
+    toast(msg);
+
+  } catch(e) {
+    toast('Erro inesperado: ' + e.message, 'err');
+    if (res) res.innerHTML = '<p class="empty-msg">Erro — tente novamente</p>';
+    return;
   }
 
   // Recarregar detalhe e listas
