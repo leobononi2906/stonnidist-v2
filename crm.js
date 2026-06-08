@@ -1316,21 +1316,21 @@ async function searchVincERP() {
     ${jaVinc > 0 ? `<strong>${jaVinc} código${jaVinc>1?'s':''} ERP já vinculado${jaVinc>1?'s':''}</strong> — pode adicionar mais. Pedidos serão agregados.` : 'Buscando...'}
   </p>`;
 
-  // Busca em atac_clientes (que é a tabela certa com os clientes do ERP)
+  // Busca em vw_dim_cliente (todos os clientes do ERP)
   const qNum = isNaN(q) ? 0 : parseInt(q);
   const qCnpj = q.replace(/\D/g,'');
 
   // Monta query OR correta para o Supabase
-  let params = `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&limit=20`;
+  let params = `select=id_cliente,nome_cliente,cnpj,cidade,uf&limit=20`;
   if (qNum > 0) {
     params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,id_cliente.eq.${qNum})`;
   } else if (qCnpj.length >= 8) {
-    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${qCnpj}*)`;
+    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj.ilike.*${qCnpj}*)`;
   } else {
     params += `&nome_cliente=ilike.*${encodeURIComponent(q)}*`;
   }
 
-  const data = await sbQ('atac_clientes', params);
+  const data = await sbQ('vw_dim_cliente', params);
   const res = Array.isArray(data) ? data : [];
 
   if (!res.length) {
@@ -1340,7 +1340,7 @@ async function searchVincERP() {
 
   const vincAtual = new Set(S.vinculosERP.map(v => v.id_cliente_erp));
   el.innerHTML = res.map(c => `
-    <button onclick="confirmarVincERP(${c.id_cliente},'${esc(c.nome_cliente||'')}','${esc(c.cnpj_cpf||'')}')"
+    <button onclick="confirmarVincERP(${c.id_cliente},'${esc(c.nome_cliente||'')}','${esc(c.cnpj||'')}')"
       ${vincAtual.has(c.id_cliente) ? 'disabled style="opacity:.5;cursor:default"' : ''}
       class="mres-btn" style="margin-bottom:4px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -1350,7 +1350,7 @@ async function searchVincERP() {
           <span style="font-size:11px;color:var(--text-muted)">#${c.id_cliente}</span>
         </div>
       </div>
-      ${(c.cnpj_cpf||c.cidade) ? `<div class="mres-meta">${c.cnpj_cpf ? fmtC(c.cnpj_cpf)+' · ' : ''}${c.cidade||''}${c.uf ? ' - '+c.uf : ''}</div>` : ''}
+      ${(c.cnpj||c.cidade) ? `<div class="mres-meta">${c.cnpj ? fmtC(c.cnpj)+' · ' : ''}${c.cidade||''}${c.uf ? ' - '+c.uf : ''}</div>` : ''}
     </button>`).join('');
 }
 
