@@ -1343,7 +1343,7 @@ async function confirmarVincERP(erpId, erpNome, cnpj) {
   const crmNome = m.dataset.crmnome;
 
   // Verificar se já existe este ERP vinculado
-  if (S.vinculosERP.some(v => v.id_cliente_erp === erpId)) {
+  if (S.vinculosERP.some(v => Number(v.id_cliente_erp) === Number(erpId))) {
     toast('Este código ERP já está vinculado!', 'err'); return;
   }
 
