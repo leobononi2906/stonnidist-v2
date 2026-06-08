@@ -40,8 +40,7 @@ const S = {
   // prospecção geral (sem vendedor) e vencidos (prazo expirado)
   prospGeral: [],
   prospVencidos: new Set(),
-  // IDs de clientes CPF (pessoa física) — excluídos da prospecção
-  cpfIds: new Set(),
+  // CPF filtrado direto na view atac_crm_clientes (campo nao_comercial)
   // modal novo contato umbler
   novoContatoTel: null,
   novoContatoNome: '',
@@ -223,29 +222,7 @@ async function loadDimMap() {
   const d=await sbQ('atac_clientes','select=id_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
   S.dimMap=new Map();(Array.isArray(d)?d:[]).forEach(r=>S.dimMap.set(r.id_cliente,r));
 }
-// Carrega IDs de clientes CPF (11 dígitos) — serão filtrados da prospecção
-async function loadCpfIds() {
-  // Busca clientes com CPF na atac_clientes (situacao A ou I)
-  const d = await sbQ('atac_clientes',
-    'select=id_cliente,cnpj_cpf&cnpj_cpf=not.is.null&limit=9999');
-  const ids = new Set();
-  (Array.isArray(d)?d:[]).forEach(r => {
-    const digits = (r.cnpj_cpf||'').replace(/\D/g,'');
-    if (digits.length === 11) ids.add(r.id_cliente);
-  });
-  // Também inclui os 85 IDs conhecidos de CPF que compraram mas não estão na atac_clientes
-  // Lista definitiva dos IDs CPF identificados
-  const cpfKnown = [71607,71649,42671,71202,71663,71612,46211,76017,71631,71664,
-    71632,71608,71661,76141,76121,76125,71657,71667,82367,46470,71646,84431,
-    71638,71658,71678,71610,33807,71627,71672,71676,76062,82536,71629,46587,
-    71677,71644,75996,71613,71660,71651,51657,71647,76250,71633,42488,75997,
-    71659,75998,71639,71650,71640,71771,71630,71634,71773,71680,27596,76089,
-    71671,41352,82650,71617,69678,51652,82270,71687,71641,71675,71619,75594,
-    76217,71683,16924,76251,71642,82238,84230,76345,81920,38307,76249,76214,
-    45989,71682,71668];
-  cpfKnown.forEach(id => ids.add(id));
-  S.cpfIds = ids;
-}
+// CPF filtrado na view atac_crm_clientes via campo nao_comercial — sem necessidade de lista no frontend
 
 async function loadDocs() {
   let params=`select=id_doc,id_vendedor,nome_vendedor,id_cliente,nome_cliente,id_empresa,empresa,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${F.dtStart}&data_faturamento=lte.${F.dtEnd}&order=data_faturamento.desc`;
@@ -263,19 +240,24 @@ async function loadCarteira() {
   let params='select=*&order=dias_sem_interacao.desc.nullslast';
   if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const d=await sbQ('atac_crm_clientes',params);
-  S.carteira=(Array.isArray(d)?d:[]).filter(c=>getStatus(c)!=='PROSPECCAO' && !S.cpfIds.has(c.id_cliente));
+  S.carteira=(Array.isArray(d)?d:[]).filter(c=>{
+    // Clientes sem compra (criados via Umbler) com vendedor vinculado ficam na carteira
+    if(c.ultima_compra==null && c.id_vendedor_responsavel!=null) return true;
+    // Demais: só entra na carteira se não for PROSPECCAO
+    return getStatus(c)!=='PROSPECCAO';
+  });
 }
 async function loadProspeccao() {
   // Prospecção do vendedor (com vínculo)
   let params='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=not.is.null&order=dias_sem_interacao.desc.nullslast';
   if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const d=await sbQ('atac_crm_clientes',params);
-  const prosp=(Array.isArray(d)?d:[]).filter(c=>!S.cpfIds.has(c.id_cliente));
+  const prosp=(Array.isArray(d)?d:[]);
 
   // Prospecção Geral (sem vendedor vinculado)
   const gParams='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast';
   const gd=await sbQ('atac_crm_clientes',gParams);
-  S.prospGeral=(Array.isArray(gd)?gd:[]).filter(c=>!S.cpfIds.has(c.id_cliente));
+  S.prospGeral=(Array.isArray(gd)?gd:[]);
 
   // Verificar vencimentos: vendedor assumiu mas não interagiu no prazo
   // Buscar data de atribuição em atac_cliente_vendedor
@@ -1590,7 +1572,7 @@ async function buscarNoSupabase(q) {
   let results = Array.isArray(data) ? data : [];
 
   // Filtrar carteira vs prospecção nos resultados (e excluir CPFs)
-  results = results.filter(c => !S.cpfIds.has(c.id_cliente));
+  // CPF já filtrado na view atac_crm_clientes
   if (tab === 'carteira') {
     results = results.filter(c => getStatus(c) !== 'PROSPECCAO');
     // Aplicar subfiltro
@@ -2142,7 +2124,6 @@ window.setPSub=setPSub;
 window.setPSort=setPSort;
 window.handleSearch=handleSearch;
 window.buscarNoSupabase=buscarNoSupabase;
-window.loadCpfIds=loadCpfIds;
 window.toggleVend=toggleVend;
 window.selCliente=selCliente;
 window.closeDrawer=closeDrawer;
