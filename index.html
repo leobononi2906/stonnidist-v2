@@ -624,19 +624,38 @@ input,select,textarea { width:100%; }
 
 <!-- MODAL: Vincular Umbler ↔ Vendedor -->
 <div id="modal-uv" class="modal-ov">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:480px">
     <div class="modal-head">
       <h3 id="uv-title">Vínculo Umbler → Vendedor</h3>
       <button class="btn-mc" onclick="closeUV()">✕</button>
     </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
       <div>
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Usuário Umbler (nome do atendente)</label>
-        <input id="uv-umbler" type="text" placeholder="ex: joao.silva" />
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Vendedor ERP *</label>
+        <select id="uv-vend" style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);color:var(--text-primary);outline:none;width:100%"><option value="">Selecione...</option></select>
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Vendedor ERP</label>
-        <select id="uv-vend"><option value="">Selecione...</option></select>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Usuário Umbler (nome do atendente) *</label>
+        <input id="uv-umbler" type="text" placeholder="ex: JOAO CLAUDIO ALVES BUENO"
+          style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);outline:none;width:100%"/>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">
+          ID Membro Umbler
+          <span style="font-size:10px;font-weight:400;color:var(--text-muted)"> — campo LastOrganizationMember.Id do webhook</span>
+        </label>
+        <input id="uv-id-membro" type="text" placeholder="ex: aTx3jZJ3Ikm5jZTU"
+          style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;font-family:'DM Mono',monospace;background:var(--surface2);outline:none;width:100%"/>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:3px">Encontre em: Configurações → Contatos Umbler Recentes → coluna Atendente (debug)</p>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px">Inbox Umbler</label>
+        <input id="uv-inbox" type="text" placeholder="ex: NAO OFICIAL - Atacado Stonni"
+          style="height:36px;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:0 10px;font-size:13px;background:var(--surface2);outline:none;width:100%"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+        <input id="uv-ativo" type="checkbox" checked style="width:16px;height:16px;cursor:pointer"/>
+        <label style="font-size:13px;color:var(--text-primary);cursor:pointer" for="uv-ativo">Ativo — contatos deste atendente serão atribuídos ao vendedor</label>
       </div>
     </div>
     <div class="modal-footer">
