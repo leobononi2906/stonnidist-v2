@@ -297,24 +297,99 @@ async function loadProspeccao() {
   }
 }
 async function loadUmbler() {
-  const [cts,tels]=await Promise.all([
-    sbQ('atac_umbler_contatos','select=telefone,nome_contato,nome_atendente,ultimo_contato&nao_comercial=eq.false&order=ultimo_contato.desc'),
-    sbQ('atac_cliente_telefones','select=telefone'),
+  const [cts, tels] = await Promise.all([
+    sbQ('atac_umbler_contatos', 'select=telefone,nome_contato,nome_atendente,ultimo_contato&nao_comercial=eq.false&order=ultimo_contato.desc'),
+    sbQ('atac_cliente_telefones', 'select=telefone,id_cliente,nome_cliente'),
   ]);
-  const vinc=new Set((Array.isArray(tels)?tels:[]).map(t=>t.telefone));
-  let umbler=(Array.isArray(cts)?cts:[]).filter(c=>!vinc.has(c.telefone));
-  // filtro por vendedor: via atac_umbler_vendedor
-  if(F.vendedorId&&S.umblerVendMap.length) {
-    const uvMap=S.umblerVendMap.find(u=>u.id_vendedor_erp===F.vendedorId);
-    if(uvMap) {
-      const nomes=[(uvMap.usuario_umbler||'').toLowerCase(),(uvMap.nome_vendedor_erp||'').toLowerCase()].filter(Boolean);
-      umbler=umbler.filter(c=>nomes.includes((c.nome_atendente||'').toLowerCase()));
-    } else umbler=[];
+
+  const telsArr = Array.isArray(tels) ? tels : [];
+  const vinc = new Set(telsArr.map(t => t.telefone));
+  const telClienteMap = new Map(telsArr.map(t => [t.telefone, { id: t.id_cliente, nome: t.nome_cliente }]));
+
+  // Contatos ainda sem vínculo
+  let semVinculo = (Array.isArray(cts) ? cts : []).filter(c => !vinc.has(c.telefone));
+
+  // Para os sem vínculo, verificar se o telefone existe no ERP (vw_dim_cliente)
+  if (semVinculo.length > 0) {
+    // Normalizar telefones para busca: remover DDI 55 para comparar com ERP
+    const telsParaBusca = semVinculo.map(c => {
+      const d = (c.telefone||'').replace(/\D/g,'');
+      // ERP armazena sem DDI — tentar com e sem
+      return d.startsWith('55') ? d.slice(2) : d;
+    });
+
+    // Buscar em vw_dim_cliente pelos 3 campos de telefone
+    // Fazemos buscas individuais por OR não é suportado facilmente — buscamos por bloco
+    const dimData = await sbQ('vw_dim_cliente',
+      `select=id_cliente,nome_cliente,telefone1,telefone2,telefone3&or=(${
+        telsParaBusca.filter(Boolean).map(t =>
+          `telefone1.ilike.*${t}*,telefone2.ilike.*${t}*,telefone3.ilike.*${t}*`
+        ).join(',')
+      })`);
+
+    const dimArr = Array.isArray(dimData) ? dimData : [];
+
+    // Montar mapa: numero_limpo → cliente ERP
+    const erpTelMap = new Map();
+    for (const dim of dimArr) {
+      for (const campo of ['telefone1','telefone2','telefone3']) {
+        if (!dim[campo]) continue;
+        const norm = dim[campo].replace(/\D/g,'');
+        erpTelMap.set(norm, dim);
+      }
+    }
+
+    // Para cada contato sem vínculo, ver se bate com ERP
+    const inserir = [];
+    const vinculadosAgora = new Set();
+    for (const c of semVinculo) {
+      const d = (c.telefone||'').replace(/\D/g,'');
+      const dSem55 = d.startsWith('55') ? d.slice(2) : d;
+      const match = erpTelMap.get(d) || erpTelMap.get(dSem55);
+      if (match) {
+        // Verificar se cliente já está na atac_crm_clientes (canal atacado)
+        const naView = await sbQ('atac_crm_clientes', `select=id_cliente&id_cliente=eq.${match.id_cliente}`);
+        if (Array.isArray(naView) && naView.length > 0) {
+          inserir.push({
+            id_cliente: match.id_cliente,
+            nome_cliente: match.nome_cliente,
+            telefone: c.telefone,
+            descricao: 'ERP',
+            principal: false
+          });
+          vinculadosAgora.add(c.telefone);
+        }
+      }
+    }
+
+    // Inserir vínculos encontrados
+    if (inserir.length > 0) {
+      await sbInsert('atac_cliente_telefones', inserir);
+      console.log(`Umbler auto-vinculou ${inserir.length} contato(s) ao ERP`);
+    }
+
+    // Remover da lista sem tratativa os que foram vinculados agora
+    semVinculo = semVinculo.filter(c => !vinculadosAgora.has(c.telefone));
   }
-  S.umbler=umbler;
-  const cnt=S.umbler.length;
-  const el=document.getElementById('umbl-cnt');
-  if(el){el.textContent=cnt;el.classList.toggle('hidden',cnt===0);}
+
+  let umbler = semVinculo;
+
+  // Filtro por vendedor
+  if (F.vendedorId && S.umblerVendMap.length) {
+    const uvMaps = S.umblerVendMap.filter(u => u.id_vendedor_erp === F.vendedorId);
+    if (uvMaps.length) {
+      const nomes = uvMaps.flatMap(u => [
+        (u.usuario_umbler||'').toLowerCase(),
+        (u.nome_vendedor_erp||'').toLowerCase()
+      ]).filter(Boolean);
+      umbler = umbler.filter(c => nomes.some(n => (c.nome_atendente||'').toLowerCase().includes(n) || n.includes((c.nome_atendente||'').toLowerCase().split(' ')[0])));
+    } else umbler = [];
+  }
+
+  S.umbler = umbler;
+  const cnt = S.umbler.length;
+  const el = document.getElementById('umbl-cnt');
+  if (el) { el.textContent = cnt; el.classList.toggle('hidden', cnt === 0); }
 }
 async function loadUmblerVendMap() {
   const d=await sbQ('atac_umbler_vendedor','select=id,id_vendedor_erp,usuario_umbler,nome_vendedor_erp');
