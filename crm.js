@@ -349,16 +349,32 @@ async function loadUmbler() {
       if (match) {
         // Verificar se cliente já está na atac_crm_clientes (canal atacado)
         const naView = await sbQ('atac_crm_clientes', `select=id_cliente&id_cliente=eq.${match.id_cliente}`);
-        if (Array.isArray(naView) && naView.length > 0) {
-          inserir.push({
-            id_cliente: match.id_cliente,
-            nome_cliente: match.nome_cliente,
-            telefone: c.telefone,
-            descricao: 'ERP',
-            principal: false
-          });
-          vinculadosAgora.add(c.telefone);
+        const jaExiste = Array.isArray(naView) && naView.length > 0;
+
+        if (!jaExiste) {
+          // Não está na view — criar na atac_clientes para entrar na prospecção
+          const jaAtac = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${match.id_cliente}`);
+          if (!Array.isArray(jaAtac) || jaAtac.length === 0) {
+            await sbInsert('atac_clientes', {
+              id_cliente: match.id_cliente,
+              nome_cliente: match.nome_cliente,
+              situacao: 'A',
+              origem: 'UMBLER',
+              nao_comercial: false,
+              criado_em: new Date().toISOString()
+            });
+          }
         }
+
+        // Vincular telefone em ambos os casos
+        inserir.push({
+          id_cliente: match.id_cliente,
+          nome_cliente: match.nome_cliente,
+          telefone: c.telefone,
+          descricao: 'ERP',
+          principal: false
+        });
+        vinculadosAgora.add(c.telefone);
       }
     }
 
