@@ -1044,5 +1044,37 @@ window.hideLoading = hideLoading;
   </div>
 </div>
 
+
+<!-- MODAL CONFIRMAR DESCARTAR -->
+<div id="modal-confirmar-descartar" class="modal-ov">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <h3>✕ Descartar Cliente</h3>
+      <button class="btn-mc" id="cd-btn-cancel">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text-primary);margin-bottom:4px">Tem certeza que deseja descartar:</p>
+      <p id="cd-nome" style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:14px"></p>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">O cliente será removido da prospecção. Esta ação pode ser revertida pelo administrador.</p>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Motivo *</label>
+        <select id="cd-motivo" style="width:100%;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;box-sizing:border-box">
+          <option value="">-- Selecione --</option>
+          <option value="Não tem interesse">Não tem interesse</option>
+          <option value="Fora de área">Fora de área</option>
+          <option value="Duplicado">Duplicado</option>
+          <option value="Cliente inativo">Cliente inativo</option>
+          <option value="Sem potencial">Sem potencial</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sec" id="cd-btn-cancel2" onclick="document.getElementById('modal-confirmar-descartar').classList.remove('open')">Cancelar</button>
+      <button id="cd-btn-ok" style="padding:8px 20px;background:var(--red);color:#fff;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer">Descartar</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
