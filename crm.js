@@ -27,7 +27,7 @@ const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
-  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null,  // vínculos ERP do cliente aberto
+  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   subFilter: 'todos',
@@ -904,21 +904,30 @@ function renderLista() {
       else prazoBdg=`<span class="prazo-urg">Vencido</span>`;
     }
 
-    return`<button class="cl-item${sel?' sel':''}" onclick="selCliente(${c.id_cliente})">
-      <div class="cl-row1">
-        <span class="cl-nome">${c.nome_cliente}</span>
-        ${bdg(st)}
-        ${dc>=30?'<span style="color:#f59e0b;font-size:12px;flex-shrink:0">⚠</span>':''}
-        ${S.overdueIds.has(c.id_cliente)?'<span style="color:#ef4444;font-size:12px;flex-shrink:0">🔔</span>':''}
-        ${prazoBdg}
+    return`<div class="cl-item${sel?' sel':''}" style="cursor:default">
+      <div style="display:flex;align-items:flex-start;gap:4px">
+        <div style="flex:1;min-width:0" onclick="selCliente(${c.id_cliente})" style="cursor:pointer">
+          <div class="cl-row1">
+            <span class="cl-nome">${c.nome_cliente}</span>
+            ${bdg(st)}
+            ${dc>=30?'<span style="color:#f59e0b;font-size:12px;flex-shrink:0">⚠</span>':''}
+            ${S.overdueIds.has(c.id_cliente)?'<span style="color:#ef4444;font-size:12px;flex-shrink:0">🔔</span>':''}
+            ${prazoBdg}
+          </div>
+          ${semaforo(c)}
+          <div class="cl-row2">${sN(c.nome_vendedor_responsavel)}</div>
+          <div class="cl-row3">
+            <span class="cl-row3-l">${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:'')+'  ':''}Últ: ${c.ultima_compra?fmtD(c.ultima_compra):'—'}</span>
+            ${dim.cnpj_cpf?`<span class="cl-cnpj">${fmtC(dim.cnpj_cpf)}</span>`:''}
+          </div>
+        </div>
+        <button onclick="event.stopPropagation();descartarCliente(${c.id_cliente},'${esc(c.nome_cliente)}')"
+          title="Descartar cliente"
+          style="flex-shrink:0;margin-top:2px;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);background:none;color:var(--text-muted);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:all .15s"
+          onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)';this.style.background='var(--red-bg)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)';this.style.background='none'">✕</button>
       </div>
-      ${semaforo(c)}
-      <div class="cl-row2">${sN(c.nome_vendedor_responsavel)}</div>
-      <div class="cl-row3">
-        <span class="cl-row3-l">${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:'')+'  ':''}Últ: ${c.ultima_compra?fmtD(c.ultima_compra):'—'}</span>
-        ${dim.cnpj_cpf?`<span class="cl-cnpj">${fmtC(dim.cnpj_cpf)}</span>`:''}
-      </div>
-    </button>`;
+    </div>`;
   }).join('');
 }
 
@@ -2159,10 +2168,35 @@ async function removerVincTel(phId) {
 }
 
 // ── DESCARTAR CLIENTE (Prospecção Geral) ──────────────────────
+// Modal de confirmação para descartar
+function confirmarDescartar(id, nome) {
+  return new Promise(resolve => {
+    const m = document.getElementById('modal-confirmar-descartar');
+    if (!m) { resolve(false); return; }
+    m.dataset.clienteid = id;
+    document.getElementById('cd-nome').textContent = nome;
+    document.getElementById('cd-motivo').value = '';
+    // Botão confirmar
+    document.getElementById('cd-btn-ok').onclick = () => {
+      const motivo = document.getElementById('cd-motivo').value.trim();
+      if (!motivo) { toast('Informe o motivo', 'err'); return; }
+      S._descartarMotivo = motivo;
+      m.classList.remove('open');
+      resolve(true);
+    };
+    document.getElementById('cd-btn-cancel').onclick = () => {
+      m.classList.remove('open');
+      resolve(false);
+    };
+    m.classList.add('open');
+  });
+}
+
 async function descartarCliente(id, nome) {
-  const motivo = prompt(`Motivo para descartar "${nome}":\n(ex: Não tem interesse, Fora de área, Duplicado)`);
-  if (motivo === null) return;
-  if (!motivo.trim()) { toast('Informe o motivo', 'err'); return; }
+  // Usar modal de confirmação em vez de prompt nativo
+  const confirmado = await confirmarDescartar(id, nome);
+  if (!confirmado) return;
+  const motivo = S._descartarMotivo || '';
 
   // Verifica se cliente já existe na atac_clientes
   const existe = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${id}`);
@@ -2573,6 +2607,7 @@ window.APP={init, refresh: async function(){
 }};
 window.gotoTab=gotoTab;
 window.descartarCliente=descartarCliente;
+window.confirmarDescartar=confirmarDescartar;
 window.renderAgendaCRM=renderAgendaCRM;
 window.selClienteByNome=selClienteByNome;
 window.navMes=navMes;
