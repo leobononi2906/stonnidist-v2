@@ -1985,24 +1985,54 @@ async function salvarNovoContato() {
   const btn = document.getElementById('nc-btn');
   if (btn) { btn.textContent = 'Salvando...'; btn.disabled = true; }
   try {
-    // 1. Criar em atac_clientes_historico (origem UMBLER)
-    const r = await fetch(`${window.SUPA_URL}/rest/v1/atac_clientes_historico`, {
-      method: 'POST',
-      headers: { apikey: window.SUPA_KEY, Authorization: `Bearer ${await getToken()}`,
-        'Content-Type': 'application/json', Prefer: 'return=representation' },
-      body: JSON.stringify({ nome_cliente: nome, origem: 'UMBLER',
+    // 1. Verificar se CNPJ já existe no ERP antes de criar
+    let erpMatch = null;
+    if (cnpj) {
+      const cnpjDigits = cnpj.replace(/\D/g,'');
+      const erpBusca = await sbQ('vw_dim_cliente',
+        `select=id_cliente,nome_cliente&cnpj=ilike.*${cnpjDigits}*&limit=1`);
+      if (Array.isArray(erpBusca) && erpBusca.length > 0) {
+        erpMatch = erpBusca[0];
+      }
+    }
+
+    let newId;
+    if (erpMatch) {
+      // CNPJ já existe no ERP — usar o ID do ERP diretamente
+      newId = erpMatch.id_cliente;
+      // Garantir que está na atac_clientes
+      const jaExiste = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${newId}`);
+      if (!Array.isArray(jaExiste) || jaExiste.length === 0) {
+        await sbInsert('atac_clientes', {
+          id_cliente: newId, nome_cliente: erpMatch.nome_cliente,
+          cnpj_cpf: cnpj||null, situacao: 'A', origem: 'UMBLER',
+          nao_comercial: false, criado_em: new Date().toISOString()
+        });
+      }
+      toast(`🔗 CNPJ encontrado no ERP — vinculando ao cliente ${erpMatch.nome_cliente}`);
+    } else {
+      // Novo cliente — gerar ID sequencial a partir de 1000 (clientes CRM)
+      const maxRes = await sbQ('atac_clientes', 'select=id_cliente&id_cliente=gte.1000&order=id_cliente.desc&limit=1');
+      const maxId = Array.isArray(maxRes) && maxRes.length ? maxRes[0].id_cliente : 1000;
+      newId = maxId + 1;
+      await sbInsert('atac_clientes', {
+        id_cliente: newId, nome_cliente: nome.toUpperCase(),
         cnpj_cpf: cnpj||null, cidade: cidade||null, uf: uf||null,
-        descartado: false, excluido: false, ultima_compra_anterior: null })
-    });
-    if (!r.ok) { toast('Erro ao criar cliente', 'err'); return; }
-    const [novo] = await r.json();
-    const newId = novo.id;
+        situacao: 'A', origem: 'UMBLER', nao_comercial: false,
+        criado_em: new Date().toISOString()
+      });
+    }
+
     // 2. Vincular telefone
-    await sbInsert('atac_cliente_telefones', {
-      id_cliente: newId, nome_cliente: nome,
-      telefone: tel, descricao: 'Umbler', principal: true
-    });
-    // 3. Vincular vendedor se selecionado
+    const telExiste = await sbQ('atac_cliente_telefones', `select=id&id_cliente=eq.${newId}&telefone=eq.${tel}`);
+    if (!Array.isArray(telExiste) || telExiste.length === 0) {
+      await sbInsert('atac_cliente_telefones', {
+        id_cliente: newId, nome_cliente: nome,
+        telefone: tel, descricao: 'Umbler', principal: true
+      });
+    }
+
+    // 3. Vincular vendedor
     if (vendId) {
       const vend = S.vendedores.find(v => v.id_vendedor === Number(vendId));
       await sbUpsert('atac_cliente_vendedor', {
@@ -2012,9 +2042,9 @@ async function salvarNovoContato() {
         atualizado_por: 'UMBLER'
       }, 'id_cliente');
     }
-    toast(`✅ ${nome} criado e adicionado à ${vendId ? 'Prospecção do Vendedor' : 'Prospecção Geral'}`);
+
+    if (!erpMatch) toast(`✅ ${nome} criado na ${vendId ? 'Prospecção do Vendedor' : 'Prospecção Geral'}`);
     fecharNovoContato();
-    // Recarregar
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
     renderUmbler(); renderLista();
   } finally {
