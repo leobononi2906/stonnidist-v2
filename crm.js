@@ -150,8 +150,26 @@ async function init() {
   initPeriod();
   await Promise.all([loadConfig(), loadVendedores(), loadDimMap()]);
   populateVendFilter();
+  // Aplicar filtro automático pelo usuário logado
+  await aplicarFiltroUsuario();
   await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmbler(), loadUmblerVendMap(), loadOverdue(), loadToday()]);
   gotoTab('crm'); // abre direto no CRM
+}
+
+async function aplicarFiltroUsuario() {
+  try {
+    const sess = (await window.sb.auth.getSession()).data.session;
+    const email = sess?.user?.email;
+    if (!email) return;
+    const cfg = await sbQ('atac_config_usuario', `select=id_vendedor_erp,nome_vendedor&email=eq.${encodeURIComponent(email)}`);
+    if (Array.isArray(cfg) && cfg.length > 0) {
+      const { id_vendedor_erp, nome_vendedor } = cfg[0];
+      F.vendedorId = id_vendedor_erp;
+      // Atualizar o select de vendedor na topbar
+      const sel = document.getElementById('vend-filter');
+      if (sel) sel.value = String(id_vendedor_erp);
+    }
+  } catch(e) { console.warn('aplicarFiltroUsuario:', e); }
 }
 
 function initPeriod() {
@@ -1174,7 +1192,43 @@ async function renderConfig() {
   const telVincSet=new Set((Array.isArray(telVinc)?telVinc:[]).map(t=>t.telefone));
   const telVincMap=new Map((Array.isArray(telVinc)?telVinc:[]).map(t=>[t.telefone,t.nome_cliente]));
 
+  // Buscar email do usuário logado
+  const sess = (await window.sb.auth.getSession()).data.session;
+  const emailLogado = sess?.user?.email || '';
+  const cfgUsuario = emailLogado ? await sbQ('atac_config_usuario', `select=*&email=eq.${encodeURIComponent(emailLogado)}`) : [];
+  const cfgUser = Array.isArray(cfgUsuario) && cfgUsuario.length ? cfgUsuario[0] : null;
+
   el.innerHTML=`<div style="max-width:680px">
+
+    <!-- Meu Perfil -->
+    <div class="cfg-section">
+      <h3>👤 Meu Perfil</h3>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+        Vincule seu login ao seu vendedor. O CRM abrirá automaticamente filtrado no seu nome.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Login (e-mail)</label>
+          <input type="text" value="${emailLogado}" disabled
+            style="width:100%;padding:7px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-muted);font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Meu Vendedor</label>
+          <select id="cfg-meu-vendedor"
+            style="width:100%;padding:7px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px;box-sizing:border-box">
+            <option value="">-- Não vincular --</option>
+            ${S.vendedores.map(v=>`<option value="${v.id_vendedor}"${cfgUser?.id_vendedor_erp===v.id_vendedor?' selected':''}>${v.nome_vendedor}</option>`).join('')}
+          </select>
+        </div>
+        <div style="padding-top:18px">
+          <button onclick="salvarCfgUsuario('${emailLogado}')"
+            style="padding:7px 16px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+            Salvar
+          </button>
+        </div>
+      </div>
+      ${cfgUser ? `<p style="font-size:11px;color:var(--green);margin-top:8px">✓ Perfil vinculado — CRM abre filtrado em <strong>${cfgUser.nome_vendedor}</strong></p>` : `<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Sem vínculo — CRM abre com filtro "Todos"</p>`}
+    </div>
 
     <!-- Parâmetros CRM -->
     <div class="cfg-section">
@@ -2573,6 +2627,7 @@ window.fecharNovoContato=fecharNovoContato;
 window.salvarNovoContato=salvarNovoContato;
 window.toggleNotaDate=toggleNotaDate;
 window.saveCfg=saveCfg;
+window.salvarCfgUsuario=salvarCfgUsuario;
 window.newUV=newUV;
 window.newUVforVend=newUVforVend;
 window.editUV=editUV;
