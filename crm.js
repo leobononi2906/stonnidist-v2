@@ -1007,7 +1007,7 @@ function renderDrawer(){
   const qtd=S.pedidos.length;
   const telPrinc=S.telefones.find(t=>t.principal)||S.telefones[0];
   const waEl=document.getElementById('dw-wa');
-  if(telPrinc&&waEl){waEl.href=`https://wa.me/${(telPrinc.telefone||'').replace(/\D/g,'')}`;waEl.style.display='inline-flex';}
+  if(waEl) waEl.style.display='none';
 
   el.innerHTML=`
     <div>
@@ -1117,7 +1117,7 @@ function renderDrawer(){
             ${umbl?`<span style="font-size:10px;color:var(--blue-mid);font-weight:600">💬 Umbler · ${sN(umbl.nome_atendente)} · ${fmtD(umbl.ultimo_contato)}</span>`:''}
           </div>
           <div class="ph-acts">
-            <a class="ph-wa" href="https://wa.me/${(t.telefone||'').replace(/\D/g,'')}" target="_blank">💬</a>
+
             <button class="ph-del" title="Remover" onclick="delPhone('${t.id}')">✕</button>
           </div>
         </div>`;
