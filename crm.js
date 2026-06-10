@@ -1545,11 +1545,32 @@ async function abrirVincComSugestao(tel, nome, atend, erpId, erpNome) {
   }
 }
 async function searchVinc(){
-  const q=document.getElementById('vinc-search')?.value?.trim();if(!q||q.length<2)return;
-  const d=await sbQ('atac_clientes',`select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj_cpf.ilike.*${q.replace(/\D/g,'')}*)`);
-  const res=Array.isArray(d)?d.slice(0,12):[];
+  const q=document.getElementById('vinc-search')?.value?.trim();
+  if(!q||q.length<2)return;
   const el=document.getElementById('vinc-results');if(!el)return;
-  el.innerHTML=res.length?res.map(c=>`<button class="mres-btn" onclick="confirmarVinc(${c.id_cliente},'${esc(c.nome_cliente)}')"><div class="mres-nome">${c.nome_cliente}</div>${(c.cnpj_cpf||c.cidade)?`<div class="mres-meta">${c.cnpj_cpf?fmtC(c.cnpj_cpf)+' · ':''}${c.cidade||''}</div>`:''}</button>`).join(''):'<p class="empty-msg">Nenhum cliente encontrado</p>';
+  el.innerHTML='<p class="empty-msg">Buscando...</p>';
+
+  const qNum = isNaN(q) ? 0 : parseInt(q);
+  const qCnpj = q.replace(/\D/g,'');
+
+  // Buscar em vw_dim_cliente (todos os clientes do ERP)
+  let params = `select=id_cliente,nome_cliente,cnpj,cidade,uf&limit=15`;
+  if (qNum > 0) {
+    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,id_cliente.eq.${qNum})`;
+  } else if (qCnpj.length >= 8) {
+    params += `&or=(nome_cliente.ilike.*${encodeURIComponent(q)}*,cnpj.ilike.*${qCnpj}*)`;
+  } else {
+    params += `&nome_cliente=ilike.*${encodeURIComponent(q)}*`;
+  }
+
+  const d = await sbQ('vw_dim_cliente', params);
+  const res = Array.isArray(d) ? d : [];
+  el.innerHTML = res.length
+    ? res.map(c=>`<button class="mres-btn" onclick="confirmarVinc(${c.id_cliente},'${esc(c.nome_cliente)}')">
+        <div class="mres-nome">${c.nome_cliente}</div>
+        ${(c.cnpj||c.cidade)?`<div class="mres-meta">${c.cnpj?fmtC(c.cnpj)+' · ':''}${c.cidade||''}${c.uf?' - '+c.uf:''}</div>`:''}
+      </button>`).join('')
+    : '<p class="empty-msg">Nenhum cliente encontrado</p>';
 }
 async function confirmarVinc(cId,cNome){
   const m=document.getElementById('modal-vinc');if(!m)return;
