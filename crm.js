@@ -336,16 +336,19 @@ async function loadUmbler() {
       return d.startsWith('55') ? d.slice(2) : d;
     });
 
-    // Buscar em vw_dim_cliente pelos 3 campos de telefone
-    // Fazemos buscas individuais por OR não é suportado facilmente — buscamos por bloco
-    const dimData = await sbQ('vw_dim_cliente',
-      `select=id_cliente,nome_cliente,telefone1,telefone2,telefone3&or=(${
-        telsParaBusca.filter(Boolean).map(t =>
-          `telefone1.ilike.*${t}*,telefone2.ilike.*${t}*,telefone3.ilike.*${t}*`
-        ).join(',')
-      })`);
-
-    const dimArr = Array.isArray(dimData) ? dimData : [];
+    // Buscar em vw_dim_cliente em lotes de 20 para evitar URL gigante (500 error)
+    const LOTE = 20;
+    const dimArr = [];
+    const telsFiltrados = telsParaBusca.filter(Boolean);
+    for (let i = 0; i < telsFiltrados.length; i += LOTE) {
+      const lote = telsFiltrados.slice(i, i + LOTE);
+      const orClause = lote.map(t =>
+        `telefone1.ilike.*${t}*,telefone2.ilike.*${t}*,telefone3.ilike.*${t}*`
+      ).join(',');
+      const loteData = await sbQ('vw_dim_cliente',
+        `select=id_cliente,nome_cliente,telefone1,telefone2,telefone3&or=(${orClause})`);
+      if (Array.isArray(loteData)) dimArr.push(...loteData);
+    }
 
     // Montar mapa: numero_limpo → cliente ERP
     const erpTelMap = new Map();
