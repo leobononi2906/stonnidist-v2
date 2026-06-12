@@ -1366,6 +1366,26 @@ async function saveCfg() {
   renderLista();
 }
 
+async function salvarCfgUsuario(email) {
+  const sel = document.getElementById('cfg-meu-vendedor');
+  if (!sel) return;
+  const idVend = Number(sel.value);
+  if (!idVend) {
+    await sbDel('atac_config_usuario','email',email);
+    toast('Vínculo removido — CRM abrirá sem filtro');
+    renderConfig();
+    return;
+  }
+  const nomeVend = S.vendedores.find(v=>v.id_vendedor===idVend)?.nome_vendedor||'';
+  await sbUpsert('atac_config_usuario',
+    {email, id_vendedor_erp:idVend, nome_vendedor:nomeVend, atualizado_em:new Date().toISOString()},
+    'email');
+  const f = document.getElementById('f-vend');
+  if (f) { f.value = String(idVend); onVendChange(String(idVend)); }
+  toast('✅ Perfil salvo — CRM filtrado em ' + nomeVend);
+  renderConfig();
+}
+
 // vínculos umbler-vendedor
 function newUV(){openUV(null,'',null,'','',true);}
 function newUVforVend(vendId, vendNome){openUV(null,'',vendId,'','',true);}
