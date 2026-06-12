@@ -267,13 +267,13 @@ async function loadCarteira() {
 }
 async function loadProspeccao() {
   // Prospecção do vendedor (com vínculo)
-  let params='select=*&status_crm=eq.PROSPECCAO&nao_comercial=eq.false&id_vendedor_responsavel=not.is.null&order=dias_sem_interacao.desc.nullslast';
+  let params='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=not.is.null&order=dias_sem_interacao.desc.nullslast';
   if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const d=await sbQ('atac_crm_clientes',params);
   const prosp=(Array.isArray(d)?d:[]);
 
   // Prospecção Geral (sem vendedor vinculado)
-  const gParams='select=*&status_crm=eq.PROSPECCAO&nao_comercial=eq.false&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast';
+  const gParams='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast';
   const gd=await sbQ('atac_crm_clientes',gParams);
   S.prospGeral=(Array.isArray(gd)?gd:[]);
 
@@ -305,7 +305,7 @@ async function loadProspeccao() {
     S.prospeccao=prosp.filter(c=>!vencidos.has(c.id_cliente));
     // Recarrega geral para incluir os recém-liberados
     if(vencidos.size>0){
-      const gd2=await sbQ('atac_crm_clientes','select=*&status_crm=eq.PROSPECCAO&nao_comercial=eq.false&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast');
+      const gd2=await sbQ('atac_crm_clientes','select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast');
       S.prospGeral=Array.isArray(gd2)?gd2:[];
       if(vencidos.size>0) toast(`${vencidos.size} cliente(s) devolvido(s) à Prospecção Geral por prazo vencido`,'err');
     }
