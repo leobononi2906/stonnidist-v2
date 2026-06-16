@@ -2154,6 +2154,9 @@ async function salvarNovoContato() {
     fecharNovoContato();
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
     renderUmbler(); renderLista();
+  } catch(e) {
+    console.error('salvarNovoContato erro:', e);
+    toast('❌ Erro ao criar cliente: ' + (e?.message || e), 'err');
   } finally {
     if (btn) { btn.textContent = 'Criar Cliente'; btn.disabled = false; }
   }
