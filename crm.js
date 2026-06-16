@@ -2089,6 +2089,15 @@ async function salvarNovoContato() {
   const uf = document.getElementById('nc-uf')?.value?.trim();
   const vendId = document.getElementById('nc-vend')?.value;
   if (!nome) { toast('Nome é obrigatório', 'err'); return; }
+  // Impedir duplicata: checar se telefone já tem vínculo
+  const telExisteCheck = await sbQ('atac_cliente_telefones', `select=id_cliente,nome_cliente&telefone=eq.${tel}&limit=1`);
+  if (Array.isArray(telExisteCheck) && telExisteCheck.length > 0) {
+    toast(`⚠️ Este contato já foi vinculado a ${telExisteCheck[0].nome_cliente || 'um cliente'}`, 'err');
+    fecharNovoContato();
+    await Promise.all([loadUmbler(), loadProspeccao()]);
+    renderUmbler(); renderLista();
+    return;
+  }
   const btn = document.getElementById('nc-btn');
   if (btn) { btn.textContent = 'Salvando...'; btn.disabled = true; }
   try {
