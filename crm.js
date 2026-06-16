@@ -2127,9 +2127,9 @@ async function salvarNovoContato() {
       }
       toast(`🔗 CNPJ encontrado no ERP — vinculando ao cliente ${erpMatch.nome_cliente}`);
     } else {
-      // Novo cliente — gerar ID sequencial a partir de 1000 (clientes CRM)
-      const maxRes = await sbQ('atac_clientes', 'select=id_cliente&id_cliente=gte.1000&order=id_cliente.desc&limit=1');
-      const maxId = Array.isArray(maxRes) && maxRes.length ? maxRes[0].id_cliente : 1000;
+      // Novo cliente — gerar ID sequencial a partir de 500000 (faixa CRM, longe do ERP que está em ~85000)
+      const maxRes = await sbQ('atac_clientes', 'select=id_cliente&id_cliente=gte.500000&order=id_cliente.desc&limit=1');
+      const maxId = Array.isArray(maxRes) && maxRes.length ? maxRes[0].id_cliente : 499999;
       newId = maxId + 1;
       await sbInsert('atac_clientes', {
         id_cliente: newId, nome_cliente: nome.toUpperCase(),
