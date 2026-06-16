@@ -2159,9 +2159,17 @@ async function salvarNovoContato() {
       }, 'id_cliente');
     }
 
-    if (!erpMatch) toast(`✅ ${nome} criado na ${vendId ? 'Prospecção do Vendedor' : 'Prospecção Geral'}`);
     fecharNovoContato();
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
+    // Navegar para Prospecção → aba correta
+    if (vendId) {
+      S.prospTab = 'minha';
+      toast(`✅ ${nome} adicionado à sua Prospecção`);
+    } else {
+      S.prospTab = 'geral';
+      toast(`✅ ${nome} adicionado à Prospecção Geral`);
+    }
+    setTab('prospeccao');
     renderUmbler(); renderLista();
   } catch(e) {
     console.error('salvarNovoContato erro:', e);
