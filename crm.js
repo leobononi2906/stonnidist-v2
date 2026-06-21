@@ -1408,7 +1408,7 @@ async function renderConfig() {
       </div>
     </div>
 
-  </div>\`;
+  </div>`;
 }
 
 async function saveCfg() {
