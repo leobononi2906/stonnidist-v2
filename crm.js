@@ -1225,6 +1225,21 @@ async function renderConfig() {
 
   el.innerHTML=`<div style="max-width:680px">
 
+    <!-- Tabs Config -->
+    <div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0">
+      <button id="cfg-tab-config" onclick="setCfgTab('config')"
+        style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--blue-dark);border-bottom:2px solid var(--blue-dark);margin-bottom:-2px">
+        ⚙️ Configurações
+      </button>
+      <button id="cfg-tab-log" onclick="setCfgTab('log')"
+        style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted)">
+        📋 Log de Ações
+      </button>
+    </div>
+
+    <!-- Painel Config -->
+    <div id="cfg-painel-config">
+
     <!-- Meu Perfil -->
     <div class="cfg-section">
       <h3>👤 Meu Perfil</h3>
@@ -1366,7 +1381,34 @@ async function renderConfig() {
           </div>`).join('')}
       </div>
     </div>
-  </div>`;
+
+    </div><!-- fim cfg-painel-config -->
+
+    <!-- Painel Log -->
+    <div id="cfg-painel-log" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <input id="log-filtro" placeholder="Buscar por ação, cliente, vendedor, erro..." 
+          style="flex:1;min-width:200px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px"
+          oninput="renderLogAcoes(this.value, document.getElementById('log-nivel')?.value)">
+        <select id="log-nivel" 
+          style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:12px"
+          onchange="renderLogAcoes(document.getElementById('log-filtro')?.value, this.value)">
+          <option value="">Todos os níveis</option>
+          <option value="INFO">✅ INFO</option>
+          <option value="WARN">⚠️ WARN</option>
+          <option value="ERROR">❌ ERROR</option>
+        </select>
+        <button onclick="renderLogAcoes(document.getElementById('log-filtro')?.value, document.getElementById('log-nivel')?.value)"
+          style="padding:8px 16px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer">
+          🔄 Atualizar
+        </button>
+      </div>
+      <div id="log-body" style="max-height:600px;overflow-y:auto">
+        <div class="empty-msg">Clique em Atualizar para carregar os logs</div>
+      </div>
+    </div>
+
+  </div>\`;
 }
 
 async function saveCfg() {
@@ -1380,6 +1422,27 @@ async function saveCfg() {
   toast('Configurações salvas!');
   // reprocessa status com novos parâmetros
   renderLista();
+}
+
+
+function setCfgTab(tab) {
+  const config = document.getElementById('cfg-painel-config');
+  const log    = document.getElementById('cfg-painel-log');
+  const btnCfg = document.getElementById('cfg-tab-config');
+  const btnLog = document.getElementById('cfg-tab-log');
+  if (!config || !log) return;
+  if (tab === 'log') {
+    config.style.display = 'none';
+    log.style.display    = 'block';
+    if (btnCfg) { btnCfg.style.color='var(--text-muted)'; btnCfg.style.borderBottomColor='transparent'; }
+    if (btnLog) { btnLog.style.color='var(--blue-dark)';  btnLog.style.borderBottom='2px solid var(--blue-dark)'; btnLog.style.marginBottom='-2px'; }
+    renderLogAcoes();
+  } else {
+    config.style.display = 'block';
+    log.style.display    = 'none';
+    if (btnCfg) { btnCfg.style.color='var(--blue-dark)';  btnCfg.style.borderBottom='2px solid var(--blue-dark)'; btnCfg.style.marginBottom='-2px'; }
+    if (btnLog) { btnLog.style.color='var(--text-muted)'; btnLog.style.borderBottomColor='transparent'; }
+  }
 }
 
 async function salvarCfgUsuario(email) {
@@ -1451,8 +1514,87 @@ async function delUV(id){
 // ══════════════════════════════════════════════════════════
 // AÇÕES CRM
 // ══════════════════════════════════════════════════════════
+
+// ── LOG DE AÇÕES ─────────────────────────────────────────────────
+async function logAcao(acao, dados={}) {
+  try {
+    let emailUsuario = '';
+    try {
+      const sess = (await window.sb?.auth?.getSession())?.data?.session;
+      emailUsuario = sess?.user?.email || '';
+    } catch(_) {}
+    await sbInsert('atac_log_acoes', {
+      acao,
+      nivel:       dados.nivel  || 'INFO',
+      id_cliente:  dados.id_cliente  || null,
+      nome_cliente:dados.nome_cliente|| null,
+      id_vendedor: dados.id_vendedor || null,
+      nome_vendedor:dados.nome_vendedor||null,
+      email_usuario: emailUsuario,
+      detalhe:     dados.detalhe ? JSON.stringify(dados.detalhe) : null,
+      erro:        dados.erro   || null,
+      criado_em:   new Date().toISOString(),
+    });
+  } catch(e) {
+    console.warn('[LOG] Falhou:', e.message);
+  }
+}
+
+// ── RENDERIZAR ABA LOG ────────────────────────────────────────────
+async function renderLogAcoes(filtro='', nivel='') {
+  const el = document.getElementById('log-body');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-msg"><span class="spin">⟳</span> Carregando logs...</div>';
+
+  let params = 'select=*&order=criado_em.desc&limit=200';
+  if (nivel) params += `&nivel=eq.${nivel}`;
+  if (filtro) params += `&or=(acao.ilike.*${encodeURIComponent(filtro)}*,nome_cliente.ilike.*${encodeURIComponent(filtro)}*,email_usuario.ilike.*${encodeURIComponent(filtro)}*,erro.ilike.*${encodeURIComponent(filtro)}*)`;
+
+  const logs = await sbQ('atac_log_acoes', params);
+  const data = Array.isArray(logs) ? logs : [];
+
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-msg">Nenhum registro encontrado</div>';
+    return;
+  }
+
+  const corNivel = { INFO:'#0077CC', WARN:'#e07b00', ERROR:'#dc2626' };
+  const bgNivel  = { INFO:'#eff6ff', WARN:'#fff7ed', ERROR:'#fef2f2' };
+
+  el.innerHTML = data.map(r => {
+    let det = '';
+    if (r.detalhe) {
+      try {
+        const d = typeof r.detalhe === 'string' ? JSON.parse(r.detalhe) : r.detalhe;
+        det = Object.entries(d).map(([k,v])=>`<span style="color:#64748b">${k}:</span> <strong>${v}</strong>`).join(' · ');
+      } catch(_) { det = String(r.detalhe); }
+    }
+    const dt = r.criado_em ? new Date(r.criado_em).toLocaleString('pt-BR') : '';
+    return `<div style="border:1px solid var(--border);border-left:4px solid ${corNivel[r.nivel]||'#94a3b8'};border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:6px;background:${bgNivel[r.nivel]||'#fff'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-weight:700;color:${corNivel[r.nivel]||'#64748b'};background:${bgNivel[r.nivel]};border:1px solid ${corNivel[r.nivel]||'#e2e8f0'};border-radius:4px;padding:1px 7px">${r.nivel||'INFO'}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text-primary);font-family:'DM Mono',monospace">${r.acao||''}</span>
+        </div>
+        <span style="font-size:10px;color:var(--text-muted)">${dt}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-secondary);display:flex;gap:12px;flex-wrap:wrap">
+        ${r.nome_cliente ? `<span>👤 ${r.nome_cliente}${r.id_cliente?' #'+r.id_cliente:''}</span>` : ''}
+        ${r.nome_vendedor ? `<span>🧑‍💼 ${r.nome_vendedor}</span>` : ''}
+        ${r.email_usuario ? `<span>✉ ${r.email_usuario}</span>` : ''}
+      </div>
+      ${det ? `<div style="font-size:11px;margin-top:4px;color:var(--text-secondary)">${det}</div>` : ''}
+      ${r.erro ? `<div style="font-size:11px;margin-top:4px;color:#dc2626;font-family:'DM Mono',monospace;word-break:break-all">⚠ ${r.erro}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 async function resolverNota(id,isToday){
   await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
+  await logAcao('RESOLVER_NOTA', {
+    id_cliente: idCliente, nome_cliente: nomeCliente,
+    id_vendedor: idVendedor||null
+  });
   toast('✅ Resolvido!');
   await Promise.all([loadOverdue(), renderAlertasCRM()]);
   if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
@@ -1463,6 +1605,10 @@ async function resolverNota(id,isToday){
 // Resolver nota a partir do drawer — abre modal próximo contato
 async function resolverNotaDrawer(id, idCliente, nomeCliente, idVendedor) {
   await sbUpdate('atac_crm_notas','id',id,{resolvido:true,reagendado:false,data_resolucao:new Date().toISOString()});
+  await logAcao('RESOLVER_NOTA', {
+    id_cliente: idCliente, nome_cliente: nomeCliente,
+    id_vendedor: idVendedor||null
+  });
   toast('✅ Resolvido!');
   await Promise.all([loadOverdue(), renderAlertasCRM()]);
   if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
@@ -1507,6 +1653,11 @@ async function salvarNota(cId,cNome,vId,vNome){
   if(!texto||!criado){toast('Preencha texto e criado por','err');return;}
   if(['TAREFA','FOLLOWUP'].includes(tipo)&&!data){toast('Informe a data prevista','err');return;}
   await sbInsert('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,data_criacao:new Date().toISOString(),id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null,resolvido:false});
+  await logAcao('CRIAR_NOTA', {
+    id_cliente: cId, nome_cliente: cNome,
+    id_vendedor: vId||null, nome_vendedor: vNome||null,
+    detalhe: { tipo, data_prevista: data||null }
+  });
   toast('Registro salvo!');
   await loadDetalhe(cId);renderDrawer();
 }
@@ -1683,6 +1834,10 @@ async function confirmarVinc(cId,cNome){
         }, 'id_cliente');
       }
     }
+    await logAcao('VINCULAR_TELEFONE', {
+      id_cliente: cId, nome_cliente: cNome,
+      detalhe: { telefone: tel, atendente: m.dataset.atend || '' }
+    });
     toast(`✅ ${cNome} vinculado`);
     closeVinc();
     await Promise.all([loadUmbler(),loadCarteira(),loadProspeccao()]);
@@ -1821,6 +1976,10 @@ async function confirmarVincERP(erpId, erpNome, cnpj) {
     const msg = isCarteira
       ? `✅ ${erpNome} (#${erpId}) vinculado — última compra há ${diasUlt}d`
       : `✅ ${erpNome} (#${erpId}) vinculado — sem compras recentes`;
+    await logAcao('VINCULAR_ERP', {
+      id_cliente: crmId, nome_cliente: crmNome,
+      detalhe: { id_erp: erpId, nome_erp: erpNome, cnpj, tem_compras: !!isCarteira }
+    });
     toast(msg);
 
   } catch(e) {
@@ -1974,6 +2133,10 @@ async function salvarModalVendedor() {
         nome_vendedor_responsavel: vend?.nome_vendedor || '',
         atualizado_por: 'CRM_MANUAL',
       }, 'id_cliente');
+      await logAcao('ALTERAR_VENDEDOR', {
+        id_cliente: cId, nome_cliente: cNome,
+        id_vendedor: Number(vendId), nome_vendedor: vend?.nome_vendedor||'',
+      });
       toast(`✅ Vendedor alterado para ${sN(vend?.nome_vendedor||'')}`);
     } else {
       // Remover vínculo → volta para prospecção geral
@@ -2233,6 +2396,11 @@ async function salvarNovoContato() {
       }, 'id_cliente');
     }
 
+    await logAcao('CRIAR_CLIENTE', {
+      id_cliente: newId, nome_cliente: nome,
+      id_vendedor: vendId||null, nome_vendedor: vendId ? S.vendedores.find(v=>v.id_vendedor===Number(vendId))?.nome_vendedor : null,
+      detalhe: { telefone: tel, origem: 'UMBLER', erp_vinculado: !!erpMatch }
+    });
     fecharNovoContato();
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
     // Navegar para Prospecção → aba correta
@@ -2247,6 +2415,7 @@ async function salvarNovoContato() {
     renderUmbler(); renderLista();
   } catch(e) {
     console.error('salvarNovoContato erro:', e);
+    await logAcao('ERRO_CRIAR_CLIENTE', { nivel:'ERROR', detalhe: { telefone: document.getElementById('nc-tel')?.value }, erro: e?.message||String(e) });
     toast('❌ Erro ao criar cliente: ' + (e?.message || e), 'err');
   } finally {
     if (btn) { btn.textContent = 'Criar Cliente'; btn.disabled = false; }
@@ -2374,6 +2543,10 @@ async function descartarCliente(id, nome) {
       }
     }
   }
+  await logAcao('DESCARTAR_CLIENTE', {
+    id_cliente: id, nome_cliente: nome,
+    detalhe: { motivo: motivo || 'não informado' }
+  });
   toast(`${nome} descartado`);
   // Remove da lista local imediatamente
   S.prospeccao = S.prospeccao.filter(c => c.id_cliente !== id);
@@ -2419,6 +2592,10 @@ async function assumirCliente(id, nomeCliente) {
 
   if(!r.ok){toast('Erro ao assumir cliente','err');return;}
 
+  await logAcao('ASSUMIR_CLIENTE', {
+    id_cliente: id, nome_cliente: nomeCliente,
+    id_vendedor: vId, nome_vendedor: vNome
+  });
   toast(`✅ ${nomeCliente} atribuído a ${sN(vNome)} — prazo: ${CFG.prospeccao_prazo_contato_dias} dias para interação`);
 
   // Recarrega
