@@ -298,6 +298,15 @@ async function loadProspeccao() {
         vencidos.add(c.id_cliente);
         // Liberar automaticamente: remove vínculo → volta para Prospecção Geral
         await sbDel('atac_cliente_vendedor','id_cliente',c.id_cliente);
+        // Nota automática de registro
+        await sbInsert('atac_crm_notas',{
+          id_cliente: c.id_cliente, nome_cliente: c.nome_cliente,
+          tipo: 'OBSERVACAO',
+          texto: `Prazo de prospecção vencido (${diasAtrib} dias sem interação). Cliente devolvido à Prospecção Geral pelo sistema.`,
+          resolvido: true, data_criacao: new Date().toISOString(),
+          data_prevista: new Date().toISOString().split('T')[0],
+          atualizado_por: 'SISTEMA'
+        });
       }
     }
     S.prospVencidos=vencidos;
@@ -420,11 +429,15 @@ async function loadUmbler() {
   if (F.vendedorId && S.umblerVendMap.length) {
     const uvMaps = S.umblerVendMap.filter(u => u.id_vendedor_erp === F.vendedorId);
     if (uvMaps.length) {
-      const nomes = uvMaps.flatMap(u => [
-        (u.usuario_umbler||'').toLowerCase(),
-        (u.nome_vendedor_erp||'').toLowerCase()
-      ]).filter(Boolean);
-      umbler = umbler.filter(c => nomes.some(n => (c.nome_atendente||'').toLowerCase().includes(n) || n.includes((c.nome_atendente||'').toLowerCase().split(' ')[0])));
+      // Filtrar por inbox_umbler (preciso) ou nome como fallback
+      const inboxes = uvMaps.map(u=>(u.inbox_umbler||'').toLowerCase()).filter(Boolean);
+      const nomes = uvMaps.flatMap(u=>[(u.usuario_umbler||'').toLowerCase(),(u.nome_vendedor_erp||'').toLowerCase()]).filter(Boolean);
+      umbler = umbler.filter(c => {
+        const atend = (c.nome_atendente||'').toLowerCase();
+        const cInbox = (c.inbox_umbler||'').toLowerCase();
+        if (inboxes.length && cInbox) return inboxes.some(i => cInbox.includes(i) || i.includes(cInbox));
+        return nomes.some(n => atend.includes(n.split(' ')[0]) || n.split(' ')[0].includes(atend.split(' ')[0]));
+      });
     } else umbler = [];
   }
 
@@ -2131,6 +2144,11 @@ async function salvarNovoContato() {
       const maxRes = await sbQ('atac_clientes', 'select=id_cliente&id_cliente=gte.500000&order=id_cliente.desc&limit=1');
       const maxId = Array.isArray(maxRes) && maxRes.length ? maxRes[0].id_cliente : 499999;
       newId = maxId + 1;
+      // Anti race-condition: re-checar se ID já foi pego por outro vendedor
+      const idConflito = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${newId}`);
+      if (Array.isArray(idConflito) && idConflito.length > 0) {
+        newId = newId + Math.floor(Math.random() * 50) + 1;
+      }
       await sbInsert('atac_clientes', {
         id_cliente: newId, nome_cliente: nome.toUpperCase(),
         cnpj_cpf: cnpj||null, cidade: cidade||null, uf: uf||null,
@@ -2266,16 +2284,27 @@ async function descartarCliente(id, nome) {
   const existe = await sbQ('atac_clientes', `select=id_cliente&id_cliente=eq.${id}`);
   if (Array.isArray(existe) && existe.length > 0) {
     await sbUpdate('atac_clientes', 'id_cliente', id, {
-      situacao: 'I', nao_comercial: true, atualizado_em: new Date().toISOString()
+      situacao: 'I', nao_comercial: true, origem: 'DESCARTADO', motivo_descarte: motivo||null, atualizado_em: new Date().toISOString()
     });
   } else {
     await sbInsert('atac_clientes', {
       id_cliente: id, nome_cliente: nome, situacao: 'I',
-      nao_comercial: true, origem: 'DESCARTADO', criado_em: new Date().toISOString()
+      nao_comercial: true, origem: 'DESCARTADO', motivo_descarte: motivo||null, criado_em: new Date().toISOString()
     });
   }
   // Remove vínculo de vendedor se houver
   await sbDel('atac_cliente_vendedor', 'id_cliente', id);
+  // Se ID do ERP, descartar também qualquer registro 500000+ com mesmo telefone
+  if (Number(id) < 500000) {
+    const tDoc = await sbQ('atac_cliente_telefones', `select=telefone&id_cliente=eq.${id}`);
+    for (const t of (Array.isArray(tDoc)?tDoc:[])) {
+      const dups = await sbQ('atac_cliente_telefones', `select=id_cliente&telefone=eq.${t.telefone}&id_cliente=gte.500000`);
+      for (const d of (Array.isArray(dups)?dups:[])) {
+        await sbUpdate('atac_clientes','id_cliente',d.id_cliente,{situacao:'I',nao_comercial:true,origem:'DESCARTADO',motivo_descarte:motivo||null,atualizado_em:new Date().toISOString()});
+        await sbDel('atac_cliente_vendedor','id_cliente',d.id_cliente);
+      }
+    }
+  }
   toast(`${nome} descartado`);
   // Remove da lista local imediatamente
   S.prospeccao = S.prospeccao.filter(c => c.id_cliente !== id);
@@ -2295,7 +2324,20 @@ async function assumirCliente(id, nomeCliente) {
     return;
   }
 
-  if(!confirm(`Atribuir "${nomeCliente}" à carteira de ${sN(vNome)}?\n\nO vendedor terá ${CFG.prospeccao_prazo_contato_dias} dias para registrar uma interação.`)) return;
+  const ok = await new Promise(res => {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    div.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:340px;width:90%;text-align:center'>
+      <p style='margin-bottom:16px;font-size:14px'>Atribuir <b>${nomeCliente}</b> à carteira de <b>${sN(vNome)}</b>?<br><span style='font-size:12px;color:#64748b'>O vendedor terá ${CFG.prospeccao_prazo_contato_dias} dias para registrar uma interação.</span></p>
+      <div style='display:flex;gap:8px;justify-content:center'>
+        <button id='_ac_n' style='padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_ac_s' style='padding:8px 20px;border-radius:8px;border:none;background:#0077CC;color:#fff;cursor:pointer'>Assumir</button>
+      </div></div>`;
+    document.body.appendChild(div);
+    div.querySelector('#_ac_s').onclick = () => { div.remove(); res(true); };
+    div.querySelector('#_ac_n').onclick = () => { div.remove(); res(false); };
+  });
+  if (!ok) return;
 
   // Upsert em atac_cliente_vendedor — atualizado_em registra o momento da atribuição
   const r = await sbUpsert('atac_cliente_vendedor',{
