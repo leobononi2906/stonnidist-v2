@@ -255,14 +255,14 @@ async function loadDocs() {
   populateEmpFilter();
 }
 async function loadCarteira() {
-  let params='select=*&order=dias_sem_interacao.desc.nullslast';
+  // Filtrar status no banco: pega ATIVO, ATENCAO, PERDIDO — exclui PROSPECCAO
+  let params='select=*&status_crm=neq.PROSPECCAO&order=dias_sem_interacao.desc.nullslast';
   if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const d=await sbQ('atac_crm_clientes',params);
   S.carteira=(Array.isArray(d)?d:[]).filter(c=>{
-    // Clientes sem compra (criados via Umbler) com vendedor vinculado ficam na carteira
+    // Clientes sem compra com vendedor ficam na carteira também
     if(c.ultima_compra==null && c.id_vendedor_responsavel!=null) return true;
-    // Demais: só entra na carteira se não for PROSPECCAO
-    return getStatus(c)!=='PROSPECCAO';
+    return c.status_crm !== 'PROSPECCAO';
   });
 }
 async function loadProspeccao() {
@@ -1506,7 +1506,7 @@ async function salvarNota(cId,cNome,vId,vNome){
   const data=document.getElementById('nota-data')?.value;
   if(!texto||!criado){toast('Preencha texto e criado por','err');return;}
   if(['TAREFA','FOLLOWUP'].includes(tipo)&&!data){toast('Informe a data prevista','err');return;}
-  await sbInsert('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null});
+  await sbInsert('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,data_criacao:new Date().toISOString(),id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null,resolvido:false});
   toast('Registro salvo!');
   await loadDetalhe(cId);renderDrawer();
 }
@@ -1520,22 +1520,63 @@ async function savePhone(cId,cNome){
   await loadDetalhe(cId);renderDrawer();
 }
 async function delPhone(id){
-  if(!confirm('Remover telefone?'))return;
+  const ok = await new Promise(res => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:300px;width:90%;text-align:center'>
+      <p style='margin-bottom:16px;font-size:14px'>Remover este telefone?</p>
+      <div style='display:flex;gap:8px;justify-content:center'>
+        <button id='_dp_n' style='padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_dp_s' style='padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer'>Remover</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_dp_s').onclick = () => { d.remove(); res(true); };
+    d.querySelector('#_dp_n').onclick = () => { d.remove(); res(false); };
+  });
+  if (!ok) return;
   await sbDel('atac_cliente_telefones','id',id);
   toast('Removido!');
   await loadDetalhe(S.selId);renderDrawer();
 }
 async function naoComercial(tel){
-  const m=prompt('Motivo (obrigatório):');if(!m?.trim())return;
-  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:m});
+  const motivo = await new Promise(res => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:320px;width:90%'>
+      <p style='margin-bottom:12px;font-size:14px;font-weight:600'>Marcar como não comercial</p>
+      <input id='_nc_m' placeholder='Motivo obrigatório' style='width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px'>
+      <div style='display:flex;gap:8px;justify-content:flex-end'>
+        <button id='_nc_n' style='padding:8px 16px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_nc_s' style='padding:8px 16px;border-radius:8px;border:none;background:#0077CC;color:#fff;cursor:pointer'>Confirmar</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_nc_s').onclick = () => { const v=d.querySelector('#_nc_m').value.trim(); if(!v){toast('Motivo obrigatório','err');return;} d.remove(); res(v); };
+    d.querySelector('#_nc_n').onclick = () => { d.remove(); res(null); };
+  });
+  if (!motivo) return;
+  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:motivo});
   toast('Marcado como não comercial');
   await loadUmbler();renderUmbler();
 }
 async function naoComercialConfig(tel){
-  const m=prompt('Motivo (obrigatório):');if(!m?.trim())return;
-  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:m});
+  const motivo = await new Promise(res => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:320px;width:90%'>
+      <p style='margin-bottom:12px;font-size:14px;font-weight:600'>Marcar como não comercial</p>
+      <input id='_ncC_m' placeholder='Motivo obrigatório' style='width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px'>
+      <div style='display:flex;gap:8px;justify-content:flex-end'>
+        <button id='_ncC_n' style='padding:8px 16px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_ncC_s' style='padding:8px 16px;border-radius:8px;border:none;background:#0077CC;color:#fff;cursor:pointer'>Confirmar</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_ncC_s').onclick = () => { const v=d.querySelector('#_ncC_m').value.trim(); if(!v){toast('Motivo obrigatório','err');return;} d.remove(); res(v); };
+    d.querySelector('#_ncC_n').onclick = () => { d.remove(); res(null); };
+  });
+  if (!motivo) return;
+  await sbUpdate('atac_umbler_contatos','telefone',tel,{nao_comercial:true,motivo_nao_comercial:motivo});
   toast('Marcado como não comercial');
-  renderConfig(); // recarrega a tela de config
+  renderConfig();
 }
 
 // modal vincular cliente
@@ -1627,7 +1668,9 @@ async function confirmarVinc(cId,cNome){
     const atend = m.dataset.atend || '';
     const uvMatch = S.umblerVendMap.find(u =>
       (u.usuario_umbler||'').toLowerCase() === atend.toLowerCase() ||
-      (u.nome_vendedor_erp||'').toLowerCase() === atend.toLowerCase()
+      (u.nome_vendedor_erp||'').toLowerCase() === atend.toLowerCase() ||
+      atend.toLowerCase().includes((u.usuario_umbler||'').toLowerCase().split(' ')[0]) ||
+      (u.usuario_umbler||'').toLowerCase().includes(atend.toLowerCase().split(' ')[0])
     );
     if (uvMatch) {
       const vend = S.vendedores.find(v => v.id_vendedor === uvMatch.id_vendedor_erp);
@@ -1794,7 +1837,20 @@ async function confirmarVincERP(erpId, erpNome, cnpj) {
 }
 
 async function desvincularERP(vincId, crmId, erpNome) {
-  if (!confirm(`Desvincular "${erpNome}" deste cliente?\nOs telefones importados deste ERP também serão removidos.`)) return;
+  const okDesvincular = await new Promise(res => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:320px;width:90%;text-align:center'>
+      <p style='margin-bottom:16px;font-size:14px'>Desvincular <b>${erpNome}</b>?<br><span style='font-size:12px;color:#64748b'>Telefones importados deste ERP também serão removidos.</span></p>
+      <div style='display:flex;gap:8px;justify-content:center'>
+        <button id='_dv_n' style='padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_dv_s' style='padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer'>Desvincular</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_dv_s').onclick = () => { d.remove(); res(true); };
+    d.querySelector('#_dv_n').onclick = () => { d.remove(); res(false); };
+  });
+  if (!okDesvincular) return;
   // Remover vínculo
   await sbDel('atac_cliente_vinculos', 'id', vincId);
   // Remover telefones importados deste ERP
@@ -2242,7 +2298,20 @@ function abrirVincTelExtra(telefone) {
 }
 
 async function removerVincTel(phId) {
-  if (!confirm('Remover este vínculo (não remove o cliente, só a ligação com este número)?')) return;
+  const okRem = await new Promise(res => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `<div style='background:#fff;border-radius:12px;padding:24px;max-width:300px;width:90%;text-align:center'>
+      <p style='margin-bottom:16px;font-size:14px'>Remover vínculo com este número?<br><span style='font-size:12px;color:#64748b'>O cliente não é excluído, apenas a ligação com este telefone.</span></p>
+      <div style='display:flex;gap:8px;justify-content:center'>
+        <button id='_rv_n' style='padding:8px 20px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer'>Cancelar</button>
+        <button id='_rv_s' style='padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer'>Remover</button>
+      </div></div>`;
+    document.body.appendChild(d);
+    d.querySelector('#_rv_s').onclick = () => { d.remove(); res(true); };
+    d.querySelector('#_rv_n').onclick = () => { d.remove(); res(false); };
+  });
+  if (!okRem) return;
   await sbDel('atac_cliente_telefones', 'id', phId);
   toast('Vínculo removido!');
   // Recarregar detalhe
@@ -2617,7 +2686,10 @@ async function salvarNovaAtividade() {
   const vend = vendId ? S.vendedores.find(v=>v.id_vendedor===Number(vendId)) : null;
   const btn = document.getElementById('na-btn');
   if(btn){btn.textContent='Salvando...';btn.disabled=true;}
+  // Buscar id_cliente pelo nome para vincular corretamente
+  const cRef = [...S.carteira,...S.prospeccao,...S.prospGeral].find(c=>c.nome_cliente===cliente);
   await sbInsert('atac_crm_notas', {
+    id_cliente: cRef?.id_cliente || null,
     nome_cliente: cliente, tipo: 'TAREFA', texto, criado_por: criado,
     data_prevista: data || null,
     id_vendedor_responsavel: vend?.id_vendedor || null,
