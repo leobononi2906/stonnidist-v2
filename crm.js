@@ -30,6 +30,7 @@ const S = {
   notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
+  topPeriod: '1m',       // período do Top 10 Clientes
   subFilter: 'todos',
   prospTab: 'minha',   // 'minha' | 'geral'
   pSub: 'todos', pSort: 'nome_az',
@@ -621,7 +622,14 @@ function gotoTab(tab) {
 // ══════════════════════════════════════════════════════════
 function renderHome() {
   const el=document.getElementById('home-body');if(!el)return;
+  if (!S.topPeriod) S.topPeriod = '1m';
+  // Filtrar docs pelo período do Top 10
+  const hoje = new Date();
+  const meses = S.topPeriod === '6m' ? 6 : S.topPeriod === '3m' ? 3 : 1;
+  const dtCorte = new Date(hoje.getFullYear(), hoje.getMonth() - (meses-1), 1);
+  const dtCorteStr = dtCorte.toISOString().split('T')[0];
   const d=S.docs;
+  const dTop = d.filter(r => (r.data_faturamento||'') >= dtCorteStr);
   const fat=d.reduce((s,r)=>s+docFat(r),0);
   const ped=new Set(d.map(r=>r.id_doc)).size;
   const cli=new Set(d.map(r=>r.id_cliente).filter(Boolean)).size;
@@ -637,7 +645,7 @@ function renderHome() {
   const maxV=Math.max(...daily.map(([,v])=>v),1);
 
   const cm=new Map();
-  d.forEach(r=>{if(!r.id_cliente)return;if(!cm.has(r.id_cliente))cm.set(r.id_cliente,{nome:r.nome_cliente,fat:0});cm.get(r.id_cliente).fat+=docFat(r);});
+  dTop.forEach(r=>{if(!r.id_cliente)return;if(!cm.has(r.id_cliente))cm.set(r.id_cliente,{nome:r.nome_cliente,fat:0});cm.get(r.id_cliente).fat+=docFat(r);});
   const topCli=[...cm.values()].sort((a,b)=>b.fat-a.fat).slice(0,10);
 
   el.innerHTML=`
@@ -654,19 +662,41 @@ function renderHome() {
         ${daily.length?daily.map(([dt,v])=>`<div class="bar-row"><span class="bar-lbl">${fmtD(dt)}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v/maxV*100)}%"></div></div><span class="bar-val">${fmtK(v)}</span></div>`).join(''):'<p style="color:#475569;font-size:12px">Sem dados</p>'}
       </div>
       <div class="scard">
-        <div class="scard-title">🏆 Top 10 Clientes</div>
-        ${topCli.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:10px;color:#475569;width:14px">${i+1}</span><span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span><span style="font-size:12px;font-weight:600;color:#94a3b8;flex-shrink:0">${fmtK(c.fat)}</span></div>`).join('')||'<p style="color:#475569;font-size:12px">Sem dados</p>'}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="scard-title" style="margin-bottom:0">🏆 Top 10 Clientes</div>
+          <div style="display:flex;gap:4px">
+            ${['1m','3m','6m'].map(p=>`<button onclick="setTopPeriod('${p}')" id="btn-top-${p}"
+              style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;border:1.5px solid ${S.topPeriod===p?'var(--blue-dark)':'var(--border)'};background:${S.topPeriod===p?'var(--blue-dark)':'transparent'};color:${S.topPeriod===p?'#fff':'var(--text-secondary)'}">${p}</button>`).join('')}
+          </div>
+        </div>
+        <div id="top10-list">
+        ${topCli.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;color:var(--text-muted);width:16px;text-align:right">${i+1}</span>
+          <span style="flex:1;font-size:12px;color:var(--text-primary);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--blue-mid);flex-shrink:0">${fmtK(c.fat)}</span>
+        </div>`).join('')||'<p style="color:var(--text-muted);font-size:12px">Sem dados</p>'}
+        </div>
       </div>
     </div>
     <div class="scard">
       <div class="scard-title">📦 Últimos Pedidos</div>
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Data</th><th class="r">Valor</th><th>Cliente</th><th>Vendedor</th></tr></thead>
-        <tbody>${d.slice(0,10).map(r=>`<tr><td>${fmtD(r.data_faturamento)}</td><td class="r" style="font-weight:600">${fmt(docFat(r))}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.nome_cliente||'—'}</td><td style="color:#64748b">${sN(r.nome_vendedor)}</td></tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:#475569;padding:20px">Sem pedidos no período</td></tr>'}</tbody>
+        <tbody>${d.slice(0,10).map(r=>`<tr>
+  <td style="font-size:12px;color:var(--text-secondary)">${fmtD(r.data_faturamento)}</td>
+  <td class="r" style="font-weight:700;color:var(--blue-mid);font-size:13px">${fmt(docFat(r))}</td>
+  <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--text-primary)">${r.nome_cliente||'—'}</td>
+  <td style="font-size:12px;font-weight:600;color:var(--green)">${sN(r.nome_vendedor)}</td>
+</tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">Sem pedidos no período</td></tr>'}</tbody>
       </table></div>
     </div>`;
 }
 function kc(ic,lbl,val,cls){return`<div class="kcard ${cls}"><div class="lbl">${ic} ${lbl}</div><div class="val">${val}</div></div>`;}
+
+function setTopPeriod(p) {
+  S.topPeriod = p;
+  renderHome();
+}
 
 // ══════════════════════════════════════════════════════════
 // ABA VENDEDORES (com comparativo 3 meses)
@@ -3039,4 +3069,5 @@ window.abrirModalVendedor=abrirModalVendedor;
 window.fecharModalVendedor=fecharModalVendedor;
 window.salvarModalVendedor=salvarModalVendedor;
 window.setCfgTab=setCfgTab;
+window.setTopPeriod=setTopPeriod;
 window.renderLogAcoes=renderLogAcoes;
