@@ -3038,3 +3038,5 @@ window.salvarEditarCliente=salvarEditarCliente;
 window.abrirModalVendedor=abrirModalVendedor;
 window.fecharModalVendedor=fecharModalVendedor;
 window.salvarModalVendedor=salvarModalVendedor;
+window.setCfgTab=setCfgTab;
+window.renderLogAcoes=renderLogAcoes;
