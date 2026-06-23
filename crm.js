@@ -112,7 +112,16 @@ async function sbQ(table,params='') {
   const r=await fetch(`${window.SUPA_URL}/rest/v1/${table}?${params}&limit=9999`,{
     headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${await getToken()}`,'Content-Type':'application/json'}
   });
-  if(!r.ok){console.error('sbQ',table,r.status);return[];}
+  if(!r.ok){
+    const txt=await r.text().catch(()=>'');
+    console.error('sbQ',table,r.status,txt);
+    if(table!=='atac_log_acoes') logAcao('ERRO_QUERY',{
+      nivel:'ERROR',
+      detalhe:{tabela:table,query:params.substring(0,200)},
+      erro:`HTTP ${r.status} — ${txt.substring(0,300)}`
+    });
+    return[];
+  }
   return r.json();
 }
 async function sbInsert(table,body) {
