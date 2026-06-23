@@ -116,14 +116,34 @@ async function sbQ(table,params='') {
   return r.json();
 }
 async function sbInsert(table,body) {
-  return fetch(`${window.SUPA_URL}/rest/v1/${table}`,{
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}`,{
     method:'POST',headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${await getToken()}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)
   });
+  if(!r.ok && table!=='atac_log_acoes'){
+    const txt=await r.text().catch(()=>'');
+    console.error('sbInsert',table,r.status,txt);
+    logAcao('ERRO_INSERT',{
+      nivel:'ERROR',
+      detalhe:{tabela:table,dados:JSON.stringify(body).substring(0,200)},
+      erro:`HTTP ${r.status} — ${txt.substring(0,300)}`
+    });
+  }
+  return r;
 }
 async function sbUpdate(table,field,val,body) {
-  return fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`,{
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`,{
     method:'PATCH',headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${await getToken()}`,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(body)
   });
+  if(!r.ok && table!=='atac_log_acoes'){
+    const txt=await r.text().catch(()=>'');
+    console.error('sbUpdate',table,r.status,txt);
+    logAcao('ERRO_UPDATE',{
+      nivel:'ERROR',
+      detalhe:{tabela:table,campo:field,valor:String(val).substring(0,50)},
+      erro:`HTTP ${r.status} — ${txt.substring(0,300)}`
+    });
+  }
+  return r;
 }
 async function sbUpsert(table,body,conflict) {
   return fetch(`${window.SUPA_URL}/rest/v1/${table}?on_conflict=${conflict}`,{
@@ -157,6 +177,22 @@ async function init() {
   gotoTab('crm'); // abre direto no CRM
   // Log de sessão iniciada
   logAcao('SESSAO_INICIADA', { detalhe: { hora: new Date().toLocaleString('pt-BR') } });
+
+  // Captura global de erros JS não tratados
+  window.onerror = function(msg, src, linha, col, err) {
+    logAcao('ERRO_JS', {
+      nivel: 'ERROR',
+      erro: `${msg} | ${src?.split('/').pop()}:${linha}:${col}`,
+      detalhe: { stack: err?.stack?.substring(0,400) || '' }
+    });
+  };
+  window.onunhandledrejection = function(e) {
+    logAcao('ERRO_PROMISE', {
+      nivel: 'ERROR',
+      erro: e?.reason?.message || String(e?.reason).substring(0,300),
+      detalhe: { stack: e?.reason?.stack?.substring(0,400) || '' }
+    });
+  };
 }
 
 async function aplicarFiltroUsuario() {
