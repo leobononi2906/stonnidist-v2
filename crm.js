@@ -155,6 +155,8 @@ async function init() {
   await aplicarFiltroUsuario();
   await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmbler(), loadUmblerVendMap(), loadOverdue(), loadToday()]);
   gotoTab('crm'); // abre direto no CRM
+  // Log de sessão iniciada
+  logAcao('SESSAO_INICIADA', { detalhe: { hora: new Date().toLocaleString('pt-BR') } });
 }
 
 async function aplicarFiltroUsuario() {
@@ -162,6 +164,8 @@ async function aplicarFiltroUsuario() {
     const sess = (await window.sb.auth.getSession()).data.session;
     const email = sess?.user?.email;
     if (!email) return;
+    S.userEmail = email; // salva para uso no logAcao
+    window._userEmail = email;
     const cfg = await sbQ('atac_config_usuario', `select=id_vendedor_erp,nome_vendedor&email=eq.${encodeURIComponent(email)}`);
     if (Array.isArray(cfg) && cfg.length > 0) {
       const { id_vendedor_erp, nome_vendedor } = cfg[0];
@@ -1548,25 +1552,25 @@ async function delUV(id){
 // ── LOG DE AÇÕES ─────────────────────────────────────────────────
 async function logAcao(acao, dados={}) {
   try {
-    let emailUsuario = '';
-    try {
-      const sess = (await window.sb?.auth?.getSession())?.data?.session;
-      emailUsuario = sess?.user?.email || '';
-    } catch(_) {}
-    await sbInsert('atac_log_acoes', {
+    const emailUsuario = S.userEmail || window._userEmail || '';
+    const resp = await sbInsert('atac_log_acoes', {
       acao,
-      nivel:       dados.nivel  || 'INFO',
-      id_cliente:  dados.id_cliente  || null,
-      nome_cliente:dados.nome_cliente|| null,
-      id_vendedor: dados.id_vendedor || null,
-      nome_vendedor:dados.nome_vendedor||null,
+      nivel:        dados.nivel        || 'INFO',
+      id_cliente:   dados.id_cliente   || null,
+      nome_cliente: dados.nome_cliente || null,
+      id_vendedor:  dados.id_vendedor  || null,
+      nome_vendedor:dados.nome_vendedor|| null,
       email_usuario: emailUsuario,
-      detalhe:     dados.detalhe ? JSON.stringify(dados.detalhe) : null,
-      erro:        dados.erro   || null,
-      criado_em:   new Date().toISOString(),
+      detalhe:      dados.detalhe ? JSON.stringify(dados.detalhe) : null,
+      erro:         dados.erro         || null,
+      criado_em:    new Date().toISOString(),
     });
+    if (resp && !resp.ok) {
+      const txt = await resp.text().catch(()=>'');
+      console.warn('[LOG] Insert falhou:', resp.status, txt);
+    }
   } catch(e) {
-    console.warn('[LOG] Falhou:', e.message);
+    console.warn('[LOG] Erro:', e.message);
   }
 }
 
@@ -1582,6 +1586,7 @@ async function renderLogAcoes(filtro='', nivel='') {
 
   const logs = await sbQ('atac_log_acoes', params);
   const data = Array.isArray(logs) ? logs : [];
+  console.log('[LOG] registros carregados:', data.length);
 
   if (!data.length) {
     el.innerHTML = '<div class="empty-msg">Nenhum registro encontrado</div>';
