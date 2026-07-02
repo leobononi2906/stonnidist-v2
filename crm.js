@@ -386,6 +386,38 @@ async function loadUmbler() {
   // Contatos ainda sem vínculo
   let semVinculo = (Array.isArray(cts) ? cts : []).filter(c => !vinc.has(c.telefone));
 
+  // Se há filtro de vendedor ativo, mostrar APENAS contatos do inbox/atendente dele
+  // Contatos sem atendente de inbox geral ("ATACADO") não aparecem para ninguém específico
+  if (F.vendedorId) {
+    const vId = Number(F.vendedorId);
+    const mapsDoVendedor = S.umblerVendMap.filter(u => Number(u.id_vendedor_erp) === vId);
+    const inboxesDoVendedor = mapsDoVendedor.map(u => (u.inbox_umbler||'').toLowerCase()).filter(Boolean);
+    const nomesDoVendedor   = mapsDoVendedor.flatMap(u => [
+      (u.usuario_umbler||'').toLowerCase(),
+      (u.nome_vendedor_erp||'').toLowerCase()
+    ]).filter(Boolean);
+
+    semVinculo = semVinculo.filter(c => {
+      const atend = (c.nome_atendente||'').toLowerCase().trim();
+      const inbox = (c.inbox_umbler||'').toLowerCase().trim();
+
+      // 1. Tem atendente preenchido — checar se é do vendedor pelo nome
+      if (atend) {
+        return nomesDoVendedor.some(n =>
+          atend.includes(n.split(' ')[0]) || n.split(' ')[0].includes(atend.split(' ')[0])
+        );
+      }
+
+      // 2. Sem atendente — checar pelo inbox exclusivo
+      if (inbox && inboxesDoVendedor.length) {
+        return inboxesDoVendedor.some(i => inbox === i || inbox.includes(i) || i.includes(inbox));
+      }
+
+      // 3. Sem atendente e inbox geral → não aparece para nenhum vendedor específico
+      return false;
+    });
+  }
+
   // Para os sem vínculo, verificar se o telefone existe no ERP (vw_dim_cliente)
   if (semVinculo.length > 0) {
     // Normalizar telefones para busca: remover DDI 55 para comparar com ERP
