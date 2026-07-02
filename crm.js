@@ -3151,5 +3151,6 @@ window.abrirModalVendedor=abrirModalVendedor;
 window.fecharModalVendedor=fecharModalVendedor;
 window.salvarModalVendedor=salvarModalVendedor;
 window.setCfgTab=setCfgTab;
+window.setTab=setTab;
 window.setTopPeriod=setTopPeriod;
 window.renderLogAcoes=renderLogAcoes;
