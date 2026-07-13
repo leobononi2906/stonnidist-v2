@@ -815,13 +815,26 @@ async function renderVendedores() {
   // top e crescimento clientes
   const allCli=[...curCli.entries()].map(([id,v])=>{
     const prev_m=prevCli.get(id)||0;
-    const delta=v.fat-(prev_m*(/* meses no período */1));
+    const delta=v.fat-(prev_m*1);
     const pct=prev_m>0?(v.fat/prev_m-1)*100:null;
     return{id,nome:v.nome,fat:v.fat,prev_m,delta,pct};
   });
   const topV=[...allCli].sort((a,b)=>b.fat-a.fat).slice(0,5);
-  const crescV=[...allCli].filter(c=>c.pct!==null).sort((a,b)=>b.pct-a.pct).slice(0,5);
-  const quedaV=[...allCli].filter(c=>c.pct!==null).sort((a,b)=>a.pct-b.pct).slice(0,5);
+  const crescV=[...allCli].filter(c=>c.pct!==null&&c.pct>0).sort((a,b)=>b.pct-a.pct).slice(0,5);
+  const quedaV=[...allCli].filter(c=>c.pct!==null&&c.pct<0).sort((a,b)=>a.pct-b.pct).slice(0,5);
+  const fmtPct=p=>p>999?'+999%':(p>0?'+':'')+p.toFixed(0)+'%';
+  const maxTop=Math.max(...topV.map(c=>c.fat),1);
+
+  // linha de cliente nos cards de insight
+  const cliRow=(c,i,right)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+      ${i!=null?`<span style="width:20px;height:20px;border-radius:6px;background:var(--surface2);color:var(--text-secondary);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'DM Mono',monospace">${i+1}</span>`:''}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sN(c.nome)}</div>
+        ${i!=null?`<div class="bar-track" style="height:4px;margin-top:4px"><div class="bar-fill" style="width:${Math.round(c.fat/maxTop*100)}%"></div></div>`:''}
+      </div>
+      ${right}
+    </div>`;
 
   el.innerHTML=`
     <div class="kgrid">
@@ -829,48 +842,52 @@ async function renderVendedores() {
     </div>
 
     <!-- Cards de clientes -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:16px">
       <div class="scard" style="margin:0">
         <div class="scard-title">🏆 Top por Volume</div>
-        ${topV.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="font-size:10px;color:#475569;width:14px">${i+1}</span><span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span><span style="font-size:12px;font-weight:600;color:#94a3b8;flex-shrink:0">${fmtK(c.fat)}</span></div>`).join('')||'<p style="color:#475569;font-size:12px">Sem dados</p>'}
+        ${topV.map((c,i)=>cliRow(c,i,`<span style="font-size:12.5px;font-weight:700;color:var(--text-primary);flex-shrink:0;font-family:'DM Mono',monospace">${fmtK(c.fat)}</span>`)).join('')||'<div class="empty-msg">Sem dados no período</div>'}
       </div>
       <div class="scard" style="margin:0">
-        <div class="scard-title">📈 Maior Crescimento vs 3m anteriores</div>
-        ${crescV.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span><span class="delta-pos">${c.pct!=null?'+'+c.pct.toFixed(0)+'%':'—'}</span></div>`).join('')||'<p style="color:#475569;font-size:12px">Sem comparativo</p>'}
+        <div class="scard-title">📈 Maior Crescimento <span style="font-weight:500;text-transform:none;letter-spacing:0">vs média 3m</span></div>
+        ${crescV.map(c=>cliRow(c,null,`<span class="delta-pos" style="flex-shrink:0">${fmtPct(c.pct)}</span>`)).join('')||'<div class="empty-msg">Sem comparativo</div>'}
       </div>
       <div class="scard" style="margin:0">
-        <div class="scard-title">📉 Maior Queda vs 3m anteriores</div>
-        ${quedaV.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><span style="flex:1;font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome}</span><span class="delta-neg">${c.pct!=null?c.pct.toFixed(0)+'%':'—'}</span></div>`).join('')||'<p style="color:#475569;font-size:12px">Sem comparativo</p>'}
+        <div class="scard-title">📉 Maior Queda <span style="font-weight:500;text-transform:none;letter-spacing:0">vs média 3m</span></div>
+        ${quedaV.map(c=>cliRow(c,null,`<span class="delta-neg" style="flex-shrink:0">${fmtPct(c.pct)}</span>`)).join('')||'<div class="empty-msg">Sem comparativo</div>'}
       </div>
     </div>
 
     <!-- Ranking -->
     <div class="scard">
       <div class="scard-title">📊 Ranking de Vendedores</div>
-      ${vl.length?`<div style="overflow-x:auto"><table>
-        <thead><tr><th style="width:20px"></th><th>Vendedor</th><th class="r">Faturamento</th><th class="r">Clientes</th><th class="r">Pedidos</th><th class="r">Ticket</th><th style="width:120px"></th></tr></thead>
+      ${vl.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th style="width:26px"></th><th>Vendedor</th><th class="r">Faturamento</th><th class="r">% Equipe</th><th class="r">Clientes</th><th class="r">Pedidos</th><th class="r">Ticket Médio</th><th style="width:140px;min-width:100px"></th></tr></thead>
         <tbody>
           ${vl.map((v,i)=>{
             const h=crmH.get(v.id)||{a:0,t:0,r:0};
             const exp=S.expandVend===v.id;
             const m=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+            const share=fatTot?Math.round(v.fat/fatTot*100):0;
             const tc=new Map();S.docs.filter(d=>d.id_vendedor===v.id).forEach(d=>{if(!d.id_cliente)return;if(!tc.has(d.id_cliente))tc.set(d.id_cliente,{nome:d.nome_cliente,fat:0});tc.get(d.id_cliente).fat+=docFat(d);});
             const tcArr=[...tc.values()].sort((a,b)=>b.fat-a.fat).slice(0,5);
             return`<tr class="cl" onclick="toggleVend(${v.id})">
-              <td><span style="font-size:11px;color:${exp?'#3b82f6':'#475569'}">${exp?'▼':'▶'}</span></td>
-              <td style="font-weight:600">${sN(v.nome)} ${m}</td>
-              <td class="r" style="font-weight:700;color:#f1f5f9">${fmtK(v.fat)}</td>
-              <td class="r">${v.clientes}</td><td class="r">${v.pedidos}</td><td class="r">${fmtK(v.ticket)}</td>
+              <td><span style="font-size:11px;color:${exp?'var(--blue-mid)':'var(--text-muted)'}">${exp?'▼':'▶'}</span></td>
+              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${m}</td>
+              <td class="r mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</td>
+              <td class="r"><span class="b-tag" style="background:var(--blue-pale,#E8F4FD);color:var(--blue-mid);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:4px">${share}%</span></td>
+              <td class="r mono" style="color:var(--text-secondary)">${v.clientes}</td>
+              <td class="r mono" style="color:var(--text-secondary)">${v.pedidos}</td>
+              <td class="r mono" style="color:var(--text-secondary)">${fmtK(v.ticket)}</td>
               <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat/maxF*100)}%"></div></div></td>
             </tr>
-            ${exp?`<tr class="expand-row"><td colspan="7"><div class="expand-inner">
+            ${exp?`<tr class="expand-row"><td colspan="8"><div class="expand-inner">
               <div class="hgrid"><div class="hbox ha"><div class="n">${h.a}</div><div class="l">Ativos</div></div><div class="hbox ht"><div class="n">${h.t}</div><div class="l">Atenção</div></div><div class="hbox hr"><div class="n">${h.r}</div><div class="l">Em Risco</div></div></div>
-              <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Top 5 Clientes no Período</div>
-              ${tcArr.map(c=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #1e293b"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e2e8f0">${c.nome}</span><span style="color:#94a3b8;flex-shrink:0;margin-left:8px">${fmtK(c.fat)}</span></div>`).join('')||'<p style="color:#475569;font-size:12px">Sem pedidos no período</p>'}
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Top 5 Clientes no Período</div>
+              ${tcArr.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">${sN(c.nome)}</span><span class="mono" style="color:var(--text-secondary);flex-shrink:0;margin-left:8px;font-family:'DM Mono',monospace;font-weight:600">${fmtK(c.fat)}</span></div>`).join('')||'<div class="empty-msg">Sem pedidos no período</div>'}
             </div></td></tr>`:''}`;
           }).join('')}
         </tbody>
-      </table></div>`:'<p style="color:#475569;text-align:center;padding:24px">Sem dados no período</p>'}
+      </table></div>`:'<div class="empty-msg">Sem faturamento no período selecionado</div>'}
     </div>`;
 }
 function toggleVend(id){S.expandVend=S.expandVend===id?null:id;renderVendedores();}
