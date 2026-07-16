@@ -607,6 +607,29 @@ input,select,textarea { width:100%; }
 </div><!-- app-shell -->
 
 <!-- MODAL: Vincular cliente -->
+<!-- Modal: resolver erro do log -->
+<div id="modal-resolve-erro" class="modal-ov">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <h3>✓ Marcar erro como resolvido</h3>
+      <button onclick="fecharResolverErro()" style="background:none;border:none;font-size:18px;color:var(--text-muted);cursor:pointer">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:0.8px;margin-bottom:4px">Assinatura</p>
+      <p id="re-assinatura" style="font-size:12px;font-family:'DM Mono',monospace;color:var(--text-primary);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;word-break:break-word;margin-bottom:12px"></p>
+      <p style="font-size:11px;color:var(--text-muted);text-transform:uppercase;font-weight:700;letter-spacing:0.8px;margin-bottom:4px">O que foi feito (opcional)</p>
+      <input id="re-obs" placeholder="Ex: corrigido no crm.js — setTab trocado por setMainTab">
+      <p style="font-size:11px;color:var(--text-secondary);margin-top:10px;line-height:1.5">
+        Marca todas as ocorrências deste erro como resolvidas. Se o erro voltar a acontecer depois de agora, ele reaparece aqui como <strong style="color:var(--orange)">🔁 Regressão</strong>.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button onclick="fecharResolverErro()" style="padding:8px 14px;background:var(--surface2);color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer">Cancelar</button>
+      <button id="re-btn" onclick="confirmarResolverErro()" style="padding:8px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer">Marcar como resolvido</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-vinc" class="modal-ov">
   <div class="modal-box">
     <div class="modal-head">
