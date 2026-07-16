@@ -1531,6 +1531,8 @@ async function renderConfig() {
           🔄 Atualizar
         </button>
       </div>
+      <div id="log-painel" style="margin-bottom:16px"></div>
+      <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:6px">Registros brutos</div>
       <div id="log-body" style="max-height:600px;overflow-y:auto">
         <div class="empty-msg">Clique em Atualizar para carregar os logs</div>
       </div>
@@ -1655,7 +1657,7 @@ async function logAcao(acao, dados={}) {
       id_vendedor:  dados.id_vendedor  || null,
       nome_vendedor:dados.nome_vendedor|| null,
       email_usuario: emailUsuario,
-      detalhe:      dados.detalhe ? JSON.stringify(dados.detalhe) : null,
+      detalhe:      dados.detalhe || null,
       erro:         dados.erro         || null,
       criado_em:    new Date().toISOString(),
     });
@@ -1670,6 +1672,7 @@ async function logAcao(acao, dados={}) {
 
 // ── RENDERIZAR ABA LOG ────────────────────────────────────────────
 async function renderLogAcoes(filtro='', nivel='') {
+  renderLogPainel();
   const el = document.getElementById('log-body');
   if (!el) return;
   el.innerHTML = '<div class="empty-msg"><span class="spin">⟳</span> Carregando logs...</div>';
@@ -1716,19 +1719,6 @@ async function renderLogAcoes(filtro='', nivel='') {
       ${r.erro ? `<div style="font-size:11px;margin-top:4px;color:#dc2626;font-family:'DM Mono',monospace;word-break:break-all">⚠ ${r.erro}</div>` : ''}
     </div>`;
   }).join('');
-}
-
-async function resolverNota(id,isToday){
-  await sbUpdate('atac_crm_notas','id',id,{resolvido:true,data_resolucao:new Date().toISOString()});
-  await logAcao('RESOLVER_NOTA', {
-    id_cliente: idCliente, nome_cliente: nomeCliente,
-    id_vendedor: idVendedor||null
-  });
-  toast('✅ Resolvido!');
-  await Promise.all([loadOverdue(), renderAlertasCRM()]);
-  if(S.selId){await loadDetalhe(S.selId);renderDrawer();}
-  renderLista();
-  if(S.mainTab==='agenda') renderAgendaCRM();
 }
 
 // Resolver nota a partir do drawer — abre modal próximo contato
@@ -2540,7 +2530,7 @@ async function salvarNovoContato() {
       S.prospTab = 'geral';
       toast(`✅ ${nome} adicionado à Prospecção Geral`);
     }
-    setTab('prospeccao');
+    setMainTab('prospeccao');
     renderUmbler(); renderLista();
   } catch(e) {
     console.error('salvarNovoContato erro:', e);
@@ -3124,7 +3114,6 @@ window.buscarNoSupabase=buscarNoSupabase;
 window.toggleVend=toggleVend;
 window.selCliente=selCliente;
 window.closeDrawer=closeDrawer;
-window.resolverNota=resolverNota;
 window.resolverNotaDrawer=resolverNotaDrawer;
 window.reagendarNotaDrawer=reagendarNotaDrawer;
 window.salvarNota=salvarNota;
@@ -3167,7 +3156,148 @@ window.salvarEditarCliente=salvarEditarCliente;
 window.abrirModalVendedor=abrirModalVendedor;
 window.fecharModalVendedor=fecharModalVendedor;
 window.salvarModalVendedor=salvarModalVendedor;
+
+/* ============================================================
+   PAINEL DE ERROS AGRUPADOS  (atac_log_painel + atac_log_resolucoes)
+   Agrupa por assinatura (acao + erro). Resolver uma vez marca o grupo.
+   Se o erro voltar depois do resolvido_em -> status REGRESSAO.
+   ============================================================ */
+
+async function renderLogPainel() {
+  const el = document.getElementById('log-painel');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-msg"><span class="spin">⟳</span> Carregando painel de erros...</div>';
+
+  let rows;
+  try {
+    rows = await sbQ('atac_log_painel', 'select=*&order=ultima_em.desc&limit=9999');
+  } catch(e) {
+    el.innerHTML = `<div style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--red)">Falha ao carregar o painel de erros: ${e?.message||e}</div>`;
+    return;
+  }
+  const data = Array.isArray(rows) ? rows : [];
+
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-msg">🎉 Nenhum erro registrado</div>';
+    return;
+  }
+
+  const ordem = { REGRESSAO:0, ABERTO:1, RESOLVIDO:2 };
+  data.sort((a,b) => (ordem[a.status]??9) - (ordem[b.status]??9) || (b.ocorrencias||0) - (a.ocorrencias||0));
+
+  const badge = {
+    ABERTO:    { txt:'🔴 Aberto',     cor:'var(--red)',    bg:'var(--red-bg)'    },
+    REGRESSAO: { txt:'🔁 Regressão',  cor:'var(--orange)', bg:'var(--orange-bg)' },
+    RESOLVIDO: { txt:'✅ Resolvido',  cor:'var(--green)',  bg:'var(--green-bg)'  },
+  };
+
+  const nAbertos = data.filter(r => r.status !== 'RESOLVIDO').length;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted)">Erros agrupados</span>
+      ${nAbertos>0 ? `<span style="font-size:10px;font-weight:700;color:var(--red);background:var(--red-bg);border-radius:20px;padding:1px 8px">${nAbertos} em aberto</span>` : ''}
+    </div>
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface)">
+    <table class="data-table">
+      <thead><tr>
+        <th>Erro</th><th class="r">Ocorr.</th><th class="r">Usuários</th><th>Último</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      ${data.map(r => {
+        const b  = badge[r.status] || badge.ABERTO;
+        const dt = r.ultima_em ? new Date(r.ultima_em).toLocaleString('pt-BR') : '';
+        const sig = encodeURIComponent(JSON.stringify({ acao: r.acao||'', erro: r.erro||'' }));
+        const reg = r.status === 'REGRESSAO'
+          ? `<div style="font-size:10px;color:var(--orange);margin-top:2px">⚠ ${r.ocorrencias_apos_fix||0} ocorrência(s) depois do fix de ${new Date(r.resolvido_em).toLocaleDateString('pt-BR')}</div>` : '';
+        const res = (r.status === 'RESOLVIDO' && r.resolvido_em)
+          ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${new Date(r.resolvido_em).toLocaleDateString('pt-BR')}${r.resolvido_por ? ' — '+r.resolvido_por : ''}${r.observacao ? ' · '+r.observacao : ''}</div>` : '';
+        return `<tr style="cursor:default">
+          <td>
+            <div style="font-size:11.5px;font-weight:700;color:var(--text-primary);font-family:'DM Mono',monospace">${r.acao||''}</div>
+            <div style="font-size:11px;color:var(--text-secondary);word-break:break-word;max-width:520px">${r.erro||'—'}</div>
+            ${reg}${res}
+          </td>
+          <td class="r mono" style="font-weight:700">${r.ocorrencias||0}</td>
+          <td class="r mono">${r.usuarios||0}</td>
+          <td style="font-size:11px;color:var(--text-secondary);white-space:nowrap">${dt}</td>
+          <td><span style="font-size:10px;font-weight:700;white-space:nowrap;background:${b.bg};color:${b.cor};border-radius:4px;padding:2px 8px">${b.txt}</span></td>
+          <td class="r" style="white-space:nowrap">
+            ${r.status === 'RESOLVIDO'
+              ? `<button onclick="reabrirErro('${sig}')" style="font-size:10.5px;font-weight:600;color:var(--text-secondary);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer">↺ Reabrir</button>`
+              : `<button onclick="abrirResolverErro('${sig}')" style="font-size:10.5px;font-weight:600;color:#fff;background:var(--green);border:none;border-radius:var(--radius-sm);padding:4px 10px;cursor:pointer">✓ Resolver</button>`}
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+let _errAtual = null;
+
+function abrirResolverErro(sig) {
+  try { _errAtual = JSON.parse(decodeURIComponent(sig)); } catch(_) { return; }
+  const ov = document.getElementById('modal-resolve-erro');
+  if (!ov) return;
+  const t = document.getElementById('re-assinatura');
+  if (t) t.textContent = `${_errAtual.acao} · ${_errAtual.erro || '—'}`;
+  const o = document.getElementById('re-obs');
+  if (o) o.value = '';
+  ov.classList.add('open');
+  setTimeout(()=>o?.focus(), 50);
+}
+
+function fecharResolverErro() {
+  document.getElementById('modal-resolve-erro')?.classList.remove('open');
+  _errAtual = null;
+}
+
+async function confirmarResolverErro() {
+  if (!_errAtual) return;
+  const btn = document.getElementById('re-btn');
+  const obs = document.getElementById('re-obs')?.value?.trim() || null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    await sbUpsert('atac_log_resolucoes', {
+      acao:          _errAtual.acao,
+      erro:          _errAtual.erro || '',
+      resolvido_em:  new Date().toISOString(),
+      resolvido_por: S.userEmail || '',
+      observacao:    obs,
+    }, 'acao,erro');
+    await logAcao('RESOLVER_ERRO_LOG', { detalhe: { acao: _errAtual.acao, erro: _errAtual.erro, observacao: obs } });
+    toast('✅ Erro marcado como resolvido');
+    fecharResolverErro();
+    renderLogPainel();
+  } catch(e) {
+    toast('❌ Falha ao resolver: ' + (e?.message || e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Marcar como resolvido'; }
+  }
+}
+
+async function reabrirErro(sig) {
+  let a;
+  try { a = JSON.parse(decodeURIComponent(sig)); } catch(_) { return; }
+  try {
+    await fetch(`${window.SUPA_URL}/rest/v1/atac_log_resolucoes?acao=eq.${encodeURIComponent(a.acao)}&erro=eq.${encodeURIComponent(a.erro||'')}`, {
+      method: 'DELETE',
+      headers: { apikey: window.SUPA_KEY, Authorization: `Bearer ${await getToken()}` },
+    });
+    await logAcao('REABRIR_ERRO_LOG', { detalhe: { acao: a.acao, erro: a.erro } });
+    toast('↺ Erro reaberto');
+    renderLogPainel();
+  } catch(e) {
+    toast('❌ Falha ao reabrir: ' + (e?.message || e), 'err');
+  }
+}
+
 window.setCfgTab=setCfgTab;
-window.setTab=setTab;
 window.setTopPeriod=setTopPeriod;
 window.renderLogAcoes=renderLogAcoes;
+window.renderLogPainel=renderLogPainel;
+window.abrirResolverErro=abrirResolverErro;
+window.fecharResolverErro=fecharResolverErro;
+window.confirmarResolverErro=confirmarResolverErro;
+window.reabrirErro=reabrirErro;
