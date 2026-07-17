@@ -26,7 +26,7 @@ const F = {
 const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
-  carteira: [], prospeccao: [], umbler: [], umblerVendMap: [],
+  carteira: [], prospeccao: [], umbler: [], umblerVendMap: [], vendPainel: [],
   notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
@@ -59,6 +59,7 @@ const sN   = n => { if(!n)return'—';const p=n.trim().split(' ');if(p.length===
 const dias = d => { if(!d)return 9999;return Math.floor((Date.now()-new Date(d.substring(0,10)+'T12:00:00').getTime())/86400000);};
 const docFat = d => d?.faturamento_liquido ?? d?.faturamento_doc ?? 0;
 const esc  = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+const escH = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 // ── STATUS (dois semáforos) ────────────────────────────────
 function getStatusCompra(d) {
@@ -3282,62 +3283,82 @@ async function renderVendedoresConfig() {
   if (!el) return;
   el.innerHTML = '<div class="empty-msg"><span class="spin">⟳</span> Carregando equipe...</div>';
 
-  let users, carteira;
+  let lista;
   try {
-    [users, carteira] = await Promise.all([
-      sbQ('atac_config_usuario', 'select=*&order=ativo.desc,nome_vendedor.asc'),
-      sbQ('atac_crm_clientes', 'select=id_vendedor_responsavel&id_vendedor_responsavel=not.is.null&limit=9999'),
-    ]);
+    lista = await sbQ('atac_vendedores_painel', 'select=*');
   } catch(e) {
     el.innerHTML = `<div style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--red)">Falha ao carregar: ${e?.message||e}</div>`;
     return;
   }
+  lista = Array.isArray(lista) ? lista : [];
+  S.vendPainel = lista;
 
-  const lista = Array.isArray(users) ? users : [];
-  const cont  = new Map();
-  (Array.isArray(carteira)?carteira:[]).forEach(c => {
-    cont.set(c.id_vendedor_responsavel, (cont.get(c.id_vendedor_responsavel)||0) + 1);
-  });
+  const money = n => 'R$ ' + Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+  const dt = s => s ? new Date(s+'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const jaTem = new Set(lista.map(u => u.id_vendedor_erp));
-  const disp  = (S.vendedores||[]).filter(v => !jaTem.has(v.id_vendedor));
+  const linha = u => {
+    const semLogin = !u.email || String(u.email).endsWith('@stonni.local');
+    // carteira: quando inativo o vinculo continua, mas a view zera o responsavel efetivo.
+    // mostrar o que ele AINDA segura, senao nao da pra saber o tamanho do que foi solto.
+    const n = u.ativo ? u.carteira_ativa : u.carteira_vinculada;
+    const fora = !u.no_filtro_atacado;
+    return `<tr>
+      <td>
+        <div style="font-weight:700;font-size:12px;color:var(--text-primary)">${escH(u.nome_vendedor||'—')}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">ID ${u.id_vendedor_erp}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px">
+          ${escH(u.departamento||'—')}${fora?' <span style="color:var(--warning);font-weight:600">· fora do atacado</span>':''}
+        </div>
+      </td>
+      <td style="font-size:11px;color:${semLogin?'var(--text-muted)':'var(--text-secondary)'}">${semLogin?'— sem login —':escH(u.email)}</td>
+      <td class="r mono" style="font-weight:700">
+        ${n}${!u.ativo && n>0 ? '<div style="font-size:9px;font-weight:600;color:var(--warning);white-space:nowrap">no balcão</div>' : ''}
+      </td>
+      <td class="r mono" style="font-size:11px;white-space:nowrap">${u.clientes_erp||0}</td>
+      <td class="r mono" style="font-size:11px;white-space:nowrap">${money(u.faturamento_erp)}</td>
+      <td class="r mono" style="font-size:11px;white-space:nowrap">${dt(u.ultima_venda_erp)}</td>
+      <td>${u.ativo
+        ? '<span style="font-size:10px;font-weight:700;background:var(--green-bg);color:var(--green);border-radius:4px;padding:2px 8px;white-space:nowrap">✅ Ativo</span>'
+        : '<span style="font-size:10px;font-weight:700;background:var(--surface2);color:var(--text-muted);border-radius:4px;padding:2px 8px;white-space:nowrap">⛔ Inativo</span>'}</td>
+      <td class="r" style="white-space:nowrap">
+        <button onclick="abrirToggleVendedor(${u.id_vendedor_erp})"
+          style="font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary)">
+          ${u.ativo ? 'Inativar' : 'Reativar'}
+        </button>
+      </td>
+    </tr>`;
+  };
+
+  const semLoginLista = lista.filter(u => u.ativo && (!u.email || String(u.email).endsWith('@stonni.local')));
 
   el.innerHTML = `
-    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface);margin-bottom:14px">
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:auto;background:var(--surface);margin-bottom:14px">
       <table class="data-table">
-        <thead><tr><th>Vendedor</th><th>Login</th><th class="r">Carteira</th><th>Status</th><th></th></tr></thead>
+        <thead><tr>
+          <th>Vendedor</th><th>Login</th><th class="r">Carteira</th>
+          <th class="r">Clientes ERP</th><th class="r">Faturamento</th><th class="r">Última venda</th>
+          <th>Status</th><th></th>
+        </tr></thead>
         <tbody>
-        ${lista.length ? lista.map(u => {
-          const n = cont.get(u.id_vendedor_erp) || 0;
-          const fake = (u.email||'').endsWith('@stonni.local');
-          return `<tr>
-            <td>
-              <div style="font-weight:700;font-size:12px;color:var(--text-primary)">${u.nome_vendedor||'—'}</div>
-              <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">ID ${u.id_vendedor_erp}</div>
-            </td>
-            <td style="font-size:11px;color:${fake?'var(--text-muted)':'var(--text-secondary)'}">${fake?'— sem login —':u.email}</td>
-            <td class="r mono" style="font-weight:700">${n}</td>
-            <td>${u.ativo
-              ? '<span style="font-size:10px;font-weight:700;background:var(--green-bg);color:var(--green);border-radius:4px;padding:2px 8px">✅ Ativo</span>'
-              : '<span style="font-size:10px;font-weight:700;background:var(--surface2);color:var(--text-muted);border-radius:4px;padding:2px 8px">⛔ Inativo</span>'}</td>
-            <td class="r" style="white-space:nowrap">
-              <button onclick="toggleVendedorAtivo('${u.id}', ${u.ativo ? 'false' : 'true'}, '${esc(u.nome_vendedor||'')}', ${n})"
-                style="font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary)">
-                ${u.ativo ? 'Inativar' : 'Reativar'}
-              </button>
-            </td>
-          </tr>`;
-        }).join('') : '<tr><td colspan="5"><div class="empty-msg">Nenhum vendedor cadastrado</div></td></tr>'}
+        ${lista.length ? lista.map(linha).join('')
+          : '<tr><td colspan="8"><div class="empty-msg">Nenhum vendedor</div></td></tr>'}
         </tbody>
       </table>
     </div>
 
+    <p style="font-size:10.5px;color:var(--text-muted);margin-bottom:12px">
+      A lista mostra todo mundo do <strong>DISTRIBUIDOR</strong> e <strong>DISTRIBUIÇÃO REPRESENTANTES</strong>,
+      mais qualquer um que tenha cliente na carteira do CRM — mesmo de outro setor.
+      <strong>Carteira</strong> é o CRM; <strong>Clientes ERP</strong> e <strong>Faturamento</strong> vêm do ERP (distribuição).
+    </p>
+
+    ${semLoginLista.length ? `
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
       <div style="flex:1;min-width:220px">
-        <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Adicionar vendedor à equipe</label>
+        <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Cadastrar login</label>
         <select id="cfg-add-vend" class="cfg-input" style="width:100%">
           <option value="">Selecione...</option>
-          ${disp.map(v=>`<option value="${v.id_vendedor}">${v.nome_vendedor}</option>`).join('')}
+          ${semLoginLista.map(v=>`<option value="${v.id_vendedor_erp}">${escH(v.nome_vendedor)}</option>`).join('')}
         </select>
       </div>
       <div style="flex:1;min-width:200px">
@@ -3346,28 +3367,76 @@ async function renderVendedoresConfig() {
       </div>
       <button onclick="addVendedorConfig()"
         style="padding:8px 14px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer">
-        + Adicionar
+        Salvar login
       </button>
     </div>
     <p style="font-size:10.5px;color:var(--text-muted);margin-top:8px">
-      Sem login cadastrado o vendedor não consegue usar o filtro "meus clientes".
-    </p>`;
+      Sem login o vendedor não consegue usar o filtro "meus clientes". Representante não precisa de login para ser inativado.
+    </p>` : ''}`;
 }
 
-async function toggleVendedorAtivo(id, novoAtivo, nome, qtdCarteira) {
-  const ativar = (novoAtivo === true || novoAtivo === 'true');
-  if (!ativar && qtdCarteira > 0) {
-    const ok = confirm(`Inativar ${nome}?\n\nOs ${qtdCarteira} cliente(s) da carteira dele passam a aparecer na Prospecção Geral para os outros vendedores assumirem.\n\nNada é apagado — o vínculo continua registrado até alguém assumir.`);
-    if (!ok) return;
-  }
+// Modal HTML — confirm() nativo nao e confiavel no Safari iOS (bononi-padrao)
+function confirmarModal({titulo, corpo, okTexto, okCor}) {
+  return new Promise(res => {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    div.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);padding:22px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text-primary);margin:0 0 10px">${titulo}</h3>
+      <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.55;margin-bottom:18px">${corpo}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="_cm_n" style="padding:8px 18px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer">Cancelar</button>
+        <button id="_cm_s" style="padding:8px 18px;border-radius:var(--radius-sm);border:none;background:${okCor||'var(--blue-dark)'};color:#fff;font-size:12px;font-weight:600;cursor:pointer">${okTexto||'Confirmar'}</button>
+      </div></div>`;
+    document.body.appendChild(div);
+    const fim = v => { div.remove(); res(v); };
+    div.querySelector('#_cm_s').onclick = () => fim(true);
+    div.querySelector('#_cm_n').onclick = () => fim(false);
+    div.onclick = e => { if (e.target === div) fim(false); };
+  });
+}
+
+async function abrirToggleVendedor(idErp) {
+  const u = (S.vendPainel||[]).find(x => Number(x.id_vendedor_erp) === Number(idErp));
+  if (!u) { toast('Vendedor não encontrado','err'); return; }
+  const ativar = !u.ativo;
+  const n = ativar ? u.carteira_vinculada : u.carteira_ativa;
+
+  const corpo = ativar
+    ? `Os <strong>${n}</strong> cliente(s) que ainda estão vinculados a <strong>${escH(u.nome_vendedor)}</strong> voltam para a carteira dele e saem da Prospecção.`
+    : `<div style="background:var(--warning-bg,#FEF5E7);border-left:3px solid var(--warning);padding:9px 11px;border-radius:4px;margin-bottom:12px">
+         Os <strong>${n}</strong> cliente(s) da carteira de <strong>${escH(u.nome_vendedor)}</strong> caem na
+         <strong>Prospecção</strong> na hora, para qualquer vendedor assumir.
+       </div>
+       Nada é apagado — fica registrado que ele era o dono, e o card mostra "era de ${escH(sN(u.nome_vendedor))}".`;
+
+  const ok = await confirmarModal({
+    titulo: ativar ? `Reativar ${sN(u.nome_vendedor)}?` : `Inativar ${sN(u.nome_vendedor)}?`,
+    corpo,
+    okTexto: ativar ? 'Reativar' : `Inativar e soltar ${n}`,
+    okCor: ativar ? 'var(--green)' : 'var(--red)',
+  });
+  if (!ok) return;
+
   try {
-    await sbUpdate('atac_config_usuario', 'id', id, { ativo: ativar, atualizado_em: new Date().toISOString() });
+    // Representante nao tem login. Sem cadastro em atac_config_usuario a view
+    // trata como ativo (COALESCE(ativo,true)) e nao ha como inativar — por isso o upsert.
+    const email = u.email || `id${u.id_vendedor_erp}.semlogin@stonni.local`;
+    await sbUpsert('atac_config_usuario', {
+      email,
+      id_vendedor_erp: u.id_vendedor_erp,
+      nome_vendedor: u.nome_vendedor,
+      ativo: ativar,
+      atualizado_em: new Date().toISOString(),
+    }, 'email');
+
     await logAcao(ativar ? 'REATIVAR_VENDEDOR' : 'INATIVAR_VENDEDOR', {
-      nome_vendedor: nome, detalhe: { clientes_na_carteira: qtdCarteira }
+      id_vendedor: u.id_vendedor_erp,
+      nome_vendedor: u.nome_vendedor,
+      detalhe: { clientes_na_carteira: n, era_cadastrado: !!u.cadastrado, departamento: u.departamento }
     });
-    toast(ativar ? `✅ ${sN(nome)} reativado` : `⛔ ${sN(nome)} inativado — carteira liberada para garimpo`);
-    renderVendedoresConfig();
-    loadProspeccao().then(()=>renderLista()).catch(()=>{});
+    toast(ativar ? `✅ ${sN(u.nome_vendedor)} reativado` : `⛔ ${sN(u.nome_vendedor)} inativado — ${n} cliente(s) no balcão`);
+    await renderVendedoresConfig();
+    Promise.all([loadCarteira(), loadProspeccao()]).then(()=>renderLista()).catch(()=>{});
   } catch(e) {
     toast('❌ Falha: ' + (e?.message || e), 'err');
   }
@@ -3378,15 +3447,20 @@ async function addVendedorConfig() {
   const email  = (document.getElementById('cfg-add-email')?.value || '').trim().toLowerCase();
   if (!idVend) { toast('Selecione um vendedor','err'); return; }
   if (!email || !email.includes('@')) { toast('Informe um e-mail válido','err'); return; }
-  const nome = (S.vendedores||[]).find(v=>v.id_vendedor===idVend)?.nome_vendedor || '';
+  const u = (S.vendPainel||[]).find(x => Number(x.id_vendedor_erp) === idVend);
+  const nome = u?.nome_vendedor || '';
   try {
-    await sbInsert('atac_config_usuario', {
-      email, id_vendedor_erp: idVend, nome_vendedor: nome, ativo: true,
+    if (u && u.email && String(u.email).endsWith('@stonni.local')) {
+      await sbDel('atac_config_usuario', 'email', u.email);
+    }
+    await sbUpsert('atac_config_usuario', {
+      email, id_vendedor_erp: idVend, nome_vendedor: nome,
+      ativo: u ? !!u.ativo : true,
       atualizado_em: new Date().toISOString()
-    });
-    await logAcao('ADICIONAR_VENDEDOR', { nome_vendedor: nome, detalhe: { email, id_vendedor_erp: idVend } });
-    toast(`✅ ${sN(nome)} adicionado à equipe`);
-    renderVendedoresConfig();
+    }, 'email');
+    await logAcao('ADICIONAR_VENDEDOR', { id_vendedor: idVend, nome_vendedor: nome, detalhe: { email } });
+    toast(`✅ Login de ${sN(nome)} cadastrado`);
+    await renderVendedoresConfig();
   } catch(e) {
     toast('❌ Falha ao adicionar: ' + (e?.message || e), 'err');
   }
@@ -3394,7 +3468,8 @@ async function addVendedorConfig() {
 
 window.setCfgTab=setCfgTab;
 window.renderVendedoresConfig=renderVendedoresConfig;
-window.toggleVendedorAtivo=toggleVendedorAtivo;
+window.abrirToggleVendedor=abrirToggleVendedor;
+window.confirmarModal=confirmarModal;
 window.addVendedorConfig=addVendedorConfig;
 window.setTopPeriod=setTopPeriod;
 window.renderLogAcoes=renderLogAcoes;
