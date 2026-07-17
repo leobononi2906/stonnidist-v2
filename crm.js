@@ -154,14 +154,34 @@ async function sbUpdate(table,field,val,body) {
   return r;
 }
 async function sbUpsert(table,body,conflict) {
-  return fetch(`${window.SUPA_URL}/rest/v1/${table}?on_conflict=${conflict}`,{
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?on_conflict=${conflict}`,{
     method:'POST',headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${await getToken()}`,'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)
   });
+  if(!r.ok && table!=='atac_log_acoes'){
+    const txt=await r.text().catch(()=>'');
+    console.error('sbUpsert',table,r.status,txt);
+    logAcao('ERRO_UPSERT',{
+      nivel:'ERROR',
+      detalhe:{tabela:table,conflito:conflict,dados:JSON.stringify(body).substring(0,200)},
+      erro:`HTTP ${r.status} — ${txt.substring(0,300)}`
+    });
+  }
+  return r;
 }
 async function sbDel(table,field,val) {
-  return fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`,{
+  const r = await fetch(`${window.SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(val)}`,{
     method:'DELETE',headers:{apikey:window.SUPA_KEY,Authorization:`Bearer ${await getToken()}`}
   });
+  if(!r.ok && table!=='atac_log_acoes'){
+    const txt=await r.text().catch(()=>'');
+    console.error('sbDel',table,r.status,txt);
+    logAcao('ERRO_DELETE',{
+      nivel:'ERROR',
+      detalhe:{tabela:table,campo:field,valor:String(val).substring(0,50)},
+      erro:`HTTP ${r.status} — ${txt.substring(0,300)}`
+    });
+  }
+  return r;
 }
 
 // ── TOAST ──────────────────────────────────────────────────
@@ -2663,6 +2683,7 @@ async function assumirCliente(id, nomeCliente) {
     nome_cliente: nomeCliente,
     id_vendedor_responsavel: vId,
     nome_vendedor_responsavel: vNome,
+    atualizado_em: new Date().toISOString(),
     atualizado_por: 'CRM_PROSP_GERAL',
   },'id_cliente');
 
