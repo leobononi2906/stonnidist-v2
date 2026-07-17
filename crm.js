@@ -3345,15 +3345,15 @@ async function renderVendedoresConfig() {
       <td class="r mono" style="font-weight:700">
         ${n}${!u.ativo && n>0 ? '<div style="font-size:9px;font-weight:600;color:var(--warning);white-space:nowrap">no balcão</div>' : ''}
       </td>
-      <td class="r mono" style="font-size:11px;white-space:nowrap">${u.clientes_erp||0}</td>
-      <td class="r mono" style="font-size:11px;white-space:nowrap">${money(u.faturamento_erp)}</td>
-      <td class="r mono" style="font-size:11px;white-space:nowrap">${dt(u.ultima_venda_erp)}</td>
+      <td class="r mono cfg-vend-erp" style="font-size:11px;white-space:nowrap">${u.clientes_erp||0}</td>
+      <td class="r mono cfg-vend-erp" style="font-size:11px;white-space:nowrap">${money(u.faturamento_erp)}</td>
+      <td class="r mono cfg-vend-erp" style="font-size:11px;white-space:nowrap">${dt(u.ultima_venda_erp)}</td>
       <td>${u.ativo
         ? '<span style="font-size:10px;font-weight:700;background:var(--green-bg);color:var(--green);border-radius:4px;padding:2px 8px;white-space:nowrap">✅ Ativo</span>'
         : '<span style="font-size:10px;font-weight:700;background:var(--surface2);color:var(--text-muted);border-radius:4px;padding:2px 8px;white-space:nowrap">⛔ Inativo</span>'}</td>
-      <td class="r" style="white-space:nowrap">
+      <td class="r cfg-vend-acao">
         <button onclick="abrirToggleVendedor(${u.id_vendedor_erp})"
-          style="font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary)">
+          style="font-size:10.5px;font-weight:600;padding:5px 12px;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;border:1px solid ${u.ativo?'var(--red)':'var(--green)'};background:var(--surface);color:${u.ativo?'var(--red)':'var(--green)'}">
           ${u.ativo ? 'Inativar' : 'Reativar'}
         </button>
       </td>
@@ -3363,12 +3363,18 @@ async function renderVendedoresConfig() {
   const semLoginLista = lista.filter(u => u.ativo && (!u.email || String(u.email).endsWith('@stonni.local')));
 
   el.innerHTML = `
-    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:auto;background:var(--surface);margin-bottom:14px">
+    <style>
+      .cfg-vend-acao{position:sticky;right:0;background:var(--surface);box-shadow:-6px 0 8px -6px rgba(0,0,0,.18);z-index:2}
+      thead .cfg-vend-acao{background:var(--surface2)}
+      .data-table tr:hover .cfg-vend-acao{background:#F8FAFC}
+      @media(max-width:900px){ .cfg-vend-erp{display:none} }
+    </style>
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow-x:auto;background:var(--surface);margin-bottom:14px">
       <table class="data-table">
         <thead><tr>
           <th>Vendedor</th><th>Login</th><th class="r">Carteira</th>
-          <th class="r">Clientes ERP</th><th class="r">Faturamento</th><th class="r">Última venda</th>
-          <th>Status</th><th></th>
+          <th class="r cfg-vend-erp">Clientes ERP</th><th class="r cfg-vend-erp">Faturamento</th><th class="r cfg-vend-erp">Última venda</th>
+          <th>Status</th><th class="cfg-vend-acao"></th>
         </tr></thead>
         <tbody>
         ${lista.length ? lista.map(linha).join('')
