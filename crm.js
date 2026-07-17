@@ -186,11 +186,21 @@ async function sbDel(table,field,val) {
 }
 
 // ── TOAST ──────────────────────────────────────────────────
-function toast(msg,tipo='ok') {
+function toast(msg,tipo='ok',acao) {
   const el=document.createElement('div');
-  el.style.cssText=`position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:opacity .3s;background:${tipo==='err'?'#dc2626':'#16a34a'};color:#fff`;
-  el.textContent=msg;document.body.appendChild(el);
-  setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),300);},2500);
+  el.style.cssText=`position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:opacity .3s;background:${tipo==='err'?'#dc2626':'#16a34a'};color:#fff;display:flex;align-items:center;gap:12px`;
+  const txt=document.createElement('span'); txt.textContent=msg; el.appendChild(txt);
+  // Carteira e Prospeccao viraram telas separadas: sem isso o card some e o
+  // vendedor nao ve pra onde foi.
+  if(acao && typeof acao.fn==='function'){
+    const b=document.createElement('button');
+    b.textContent=acao.texto||'Ver';
+    b.style.cssText='background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:6px;cursor:pointer;white-space:nowrap';
+    b.onclick=()=>{el.remove();acao.fn();};
+    el.appendChild(b);
+  }
+  document.body.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),300);},acao?6000:2500);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -344,6 +354,7 @@ async function loadProspeccao() {
   S.prospGeral = (Array.isArray(d) ? d : []);
   S.prospeccao = [];
   S.prospVencidos = new Set();
+  atualizaBadgeProsp();
 }
 async function loadUmbler() {
   const [cts, tels] = await Promise.all([
@@ -624,7 +635,7 @@ function gotoTab(tab) {
   S.tab=tab;
   if(window.setPageInfo) window.setPageInfo(tab);
   // sidebar active
-  ['home','vendedores','crm','agenda','config'].forEach(t=>{
+  ['home','vendedores','crm','prospeccao','agenda','config'].forEach(t=>{
     document.getElementById(`si-${t}`)?.classList.toggle('active',t===tab);
   });
   // páginas: pg-home, pg-vendedores, pg-crm (usa pg-crm.active), pg-config
@@ -632,14 +643,17 @@ function gotoTab(tab) {
     const el=document.getElementById(`pg-${t}`);
     if(el){ el.classList.toggle('active',t===tab); }
   });
-  // CRM usa classe diferente
+  // CRM e Prospeccao dividem o mesmo container (lista + drawer);
+  // o que muda e qual mainTab fica ativa.
   const crmEl=document.getElementById('pg-crm');
-  if(crmEl){ crmEl.classList.toggle('active',tab==='crm'); }
+  if(crmEl){ crmEl.classList.toggle('active',tab==='crm'||tab==='prospeccao'); }
+  if(tab==='prospeccao') setMainTab('prospeccao');
+  else if(tab==='crm' && S.mainTab==='prospeccao') setMainTab('carteira');
   // Filtros: no CRM só vendedor; config oculta tudo; resto mostra tudo
   const tf = document.getElementById('topbar-filters');
   if (tab === 'config') {
     if(tf) tf.style.display = 'none';
-  } else if (tab === 'crm') {
+  } else if (tab === 'crm' || tab === 'prospeccao') {
     if(tf) tf.style.display = 'flex';
     // ocultar tudo exceto vendedor
     ['f-period','f-start','f-end','f-sep','f-emp'].forEach(id => {
@@ -2268,6 +2282,12 @@ async function salvarModalVendedor() {
 // controles UI
 function setMainTab(tab){
   S.mainTab=tab;
+  // a Prospeccao virou item da sidebar: manter os dois em sincronia
+  if(tab==='prospeccao') S.tab='prospeccao';
+  else if(S.tab==='prospeccao') S.tab='crm';
+  document.getElementById('si-crm')?.classList.toggle('active',S.tab==='crm');
+  document.getElementById('si-prospeccao')?.classList.toggle('active',S.tab==='prospeccao');
+  if(window.setPageInfo) window.setPageInfo(S.tab);
   if(tab!=='agenda'){S.selId=null;S.selCliente=null;closeDrawer();}
   // Botões de tab
   document.getElementById('tab-c')?.classList.toggle('on',tab==='carteira');
@@ -2291,6 +2311,12 @@ function setMainTab(tab){
     if(agendaPanel) agendaPanel.style.display='none';
     renderLista();
   }
+}
+function atualizaBadgeProsp(){
+  const el=document.getElementById('prosp-cnt'); if(!el)return;
+  const n=(S.prospGeral||[]).length;
+  el.textContent=n;
+  el.classList.toggle('hidden',n===0);
 }
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
@@ -2694,7 +2720,11 @@ async function assumirCliente(id, nomeCliente) {
     id_cliente: id, nome_cliente: nomeCliente,
     id_vendedor: vId, nome_vendedor: vNome
   });
-  toast(`✅ ${nomeCliente} atribuído a ${sN(vNome)} — prazo: ${CFG.prospeccao_prazo_contato_dias} dias para interação`);
+  toast(
+    `✅ ${nomeCliente} foi para a carteira de ${sN(vNome)} — prazo de ${CFG.prospeccao_prazo_contato_dias} dias`,
+    'ok',
+    { texto: 'Ver na carteira', fn: () => { gotoTab('crm'); setMainTab('carteira'); selCliente(id); } }
+  );
 
   // Recarrega
   await Promise.all([loadCarteira(), loadProspeccao()]);
@@ -3056,7 +3086,7 @@ window.APP={init, refresh: async function(){
   await Promise.all([loadDocs(),loadCarteira(),loadProspeccao(),loadUmbler(),loadOverdue(),loadToday()]);
   if(S.tab==='home')renderHome();
   if(S.tab==='vendedores')renderVendedores();
-  if(S.tab==='crm')renderCRM();
+  if(S.tab==='crm'||S.tab==='prospeccao')renderCRM();
 }};
 window.gotoTab=gotoTab;
 window.descartarCliente=descartarCliente;
@@ -3090,6 +3120,7 @@ window.setPSort=setPSort;
 window.handleSearch=handleSearch;
 window.buscarNoSupabase=buscarNoSupabase;
 window.toggleVend=toggleVend;
+window.atualizaBadgeProsp=atualizaBadgeProsp;
 window.selCliente=selCliente;
 window.closeDrawer=closeDrawer;
 window.resolverNotaDrawer=resolverNotaDrawer;
