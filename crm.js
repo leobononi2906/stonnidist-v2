@@ -1374,10 +1374,26 @@ async function renderConfig() {
         style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--blue-dark);border-bottom:2px solid var(--blue-dark);margin-bottom:-2px">
         ⚙️ Configurações
       </button>
+      <button id="cfg-tab-vendedores" onclick="setCfgTab('vendedores')"
+        style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted)">
+        👥 Vendedores
+      </button>
       <button id="cfg-tab-log" onclick="setCfgTab('log')"
         style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted)">
         📋 Log de Ações
       </button>
+    </div>
+
+    <!-- Painel Vendedores -->
+    <div id="cfg-painel-vendedores" style="display:none">
+      <div class="cfg-section">
+        <h3>👥 Equipe de Vendas</h3>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+          Marque como inativo quem saiu da equipe. A carteira dele passa a aparecer na
+          <b>Prospecção → Geral</b> para os outros assumirem, sem perder o registro de quem era o dono.
+        </p>
+        <div id="cfg-vend-body"></div>
+      </div>
     </div>
 
     <!-- Painel Config -->
@@ -1571,23 +1587,22 @@ async function saveCfg() {
 
 
 function setCfgTab(tab) {
-  const config = document.getElementById('cfg-painel-config');
-  const log    = document.getElementById('cfg-painel-log');
-  const btnCfg = document.getElementById('cfg-tab-config');
-  const btnLog = document.getElementById('cfg-tab-log');
-  if (!config || !log) return;
-  if (tab === 'log') {
-    config.style.display = 'none';
-    log.style.display    = 'block';
-    if (btnCfg) { btnCfg.style.color='var(--text-muted)'; btnCfg.style.borderBottomColor='transparent'; }
-    if (btnLog) { btnLog.style.color='var(--blue-dark)';  btnLog.style.borderBottom='2px solid var(--blue-dark)'; btnLog.style.marginBottom='-2px'; }
-    renderLogAcoes();
-  } else {
-    config.style.display = 'block';
-    log.style.display    = 'none';
-    if (btnCfg) { btnCfg.style.color='var(--blue-dark)';  btnCfg.style.borderBottom='2px solid var(--blue-dark)'; btnCfg.style.marginBottom='-2px'; }
-    if (btnLog) { btnLog.style.color='var(--text-muted)'; btnLog.style.borderBottomColor='transparent'; }
+  const paineis = { config:'cfg-painel-config', vendedores:'cfg-painel-vendedores', log:'cfg-painel-log' };
+  const botoes  = { config:'cfg-tab-config',    vendedores:'cfg-tab-vendedores',    log:'cfg-tab-log' };
+  if (!document.getElementById(paineis.config)) return;
+  for (const k of Object.keys(paineis)) {
+    const p = document.getElementById(paineis[k]);
+    const b = document.getElementById(botoes[k]);
+    const on = (k === tab);
+    if (p) p.style.display = on ? 'block' : 'none';
+    if (b) {
+      b.style.color = on ? 'var(--blue-dark)' : 'var(--text-muted)';
+      b.style.borderBottom = on ? '2px solid var(--blue-dark)' : 'none';
+      b.style.marginBottom = on ? '-2px' : '0';
+    }
   }
+  if (tab === 'log')        renderLogAcoes();
+  if (tab === 'vendedores') renderVendedoresConfig();
 }
 
 async function salvarCfgUsuario(email) {
@@ -3308,7 +3323,132 @@ async function reabrirErro(sig) {
   }
 }
 
+
+/* ============================================================
+   CONFIG > VENDEDORES — ativar / inativar equipe
+   Inativo = carteira dele cai na Prospecção Geral para garimpo,
+   mantendo o registro de quem era o dono.
+   ============================================================ */
+
+async function renderVendedoresConfig() {
+  const el = document.getElementById('cfg-vend-body');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-msg"><span class="spin">⟳</span> Carregando equipe...</div>';
+
+  let users, carteira;
+  try {
+    [users, carteira] = await Promise.all([
+      sbQ('atac_config_usuario', 'select=*&order=ativo.desc,nome_vendedor.asc'),
+      sbQ('atac_crm_clientes', 'select=id_vendedor_responsavel&id_vendedor_responsavel=not.is.null&limit=9999'),
+    ]);
+  } catch(e) {
+    el.innerHTML = `<div style="background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--red)">Falha ao carregar: ${e?.message||e}</div>`;
+    return;
+  }
+
+  const lista = Array.isArray(users) ? users : [];
+  const cont  = new Map();
+  (Array.isArray(carteira)?carteira:[]).forEach(c => {
+    cont.set(c.id_vendedor_responsavel, (cont.get(c.id_vendedor_responsavel)||0) + 1);
+  });
+
+  const jaTem = new Set(lista.map(u => u.id_vendedor_erp));
+  const disp  = (S.vendedores||[]).filter(v => !jaTem.has(v.id_vendedor));
+
+  el.innerHTML = `
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--surface);margin-bottom:14px">
+      <table class="data-table">
+        <thead><tr><th>Vendedor</th><th>Login</th><th class="r">Carteira</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        ${lista.length ? lista.map(u => {
+          const n = cont.get(u.id_vendedor_erp) || 0;
+          const fake = (u.email||'').endsWith('@stonni.local');
+          return `<tr>
+            <td>
+              <div style="font-weight:700;font-size:12px;color:var(--text-primary)">${u.nome_vendedor||'—'}</div>
+              <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">ID ${u.id_vendedor_erp}</div>
+            </td>
+            <td style="font-size:11px;color:${fake?'var(--text-muted)':'var(--text-secondary)'}">${fake?'— sem login —':u.email}</td>
+            <td class="r mono" style="font-weight:700">${n}</td>
+            <td>${u.ativo
+              ? '<span style="font-size:10px;font-weight:700;background:var(--green-bg);color:var(--green);border-radius:4px;padding:2px 8px">✅ Ativo</span>'
+              : '<span style="font-size:10px;font-weight:700;background:var(--surface2);color:var(--text-muted);border-radius:4px;padding:2px 8px">⛔ Inativo</span>'}</td>
+            <td class="r" style="white-space:nowrap">
+              <button onclick="toggleVendedorAtivo('${u.id}', ${u.ativo ? 'false' : 'true'}, '${esc(u.nome_vendedor||'')}', ${n})"
+                style="font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary)">
+                ${u.ativo ? 'Inativar' : 'Reativar'}
+              </button>
+            </td>
+          </tr>`;
+        }).join('') : '<tr><td colspan="5"><div class="empty-msg">Nenhum vendedor cadastrado</div></td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Adicionar vendedor à equipe</label>
+        <select id="cfg-add-vend" class="cfg-input" style="width:100%">
+          <option value="">Selecione...</option>
+          ${disp.map(v=>`<option value="${v.id_vendedor}">${v.nome_vendedor}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label style="font-size:11px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Login (e-mail)</label>
+        <input id="cfg-add-email" class="cfg-input" style="width:100%" placeholder="vendedor@stonni.com.br">
+      </div>
+      <button onclick="addVendedorConfig()"
+        style="padding:8px 14px;background:var(--blue-dark);color:#fff;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer">
+        + Adicionar
+      </button>
+    </div>
+    <p style="font-size:10.5px;color:var(--text-muted);margin-top:8px">
+      Sem login cadastrado o vendedor não consegue usar o filtro "meus clientes".
+    </p>`;
+}
+
+async function toggleVendedorAtivo(id, novoAtivo, nome, qtdCarteira) {
+  const ativar = (novoAtivo === true || novoAtivo === 'true');
+  if (!ativar && qtdCarteira > 0) {
+    const ok = confirm(`Inativar ${nome}?\n\nOs ${qtdCarteira} cliente(s) da carteira dele passam a aparecer na Prospecção Geral para os outros vendedores assumirem.\n\nNada é apagado — o vínculo continua registrado até alguém assumir.`);
+    if (!ok) return;
+  }
+  try {
+    await sbUpdate('atac_config_usuario', 'id', id, { ativo: ativar, atualizado_em: new Date().toISOString() });
+    await logAcao(ativar ? 'REATIVAR_VENDEDOR' : 'INATIVAR_VENDEDOR', {
+      nome_vendedor: nome, detalhe: { clientes_na_carteira: qtdCarteira }
+    });
+    toast(ativar ? `✅ ${sN(nome)} reativado` : `⛔ ${sN(nome)} inativado — carteira liberada para garimpo`);
+    renderVendedoresConfig();
+    loadProspeccao().then(()=>renderLista()).catch(()=>{});
+  } catch(e) {
+    toast('❌ Falha: ' + (e?.message || e), 'err');
+  }
+}
+
+async function addVendedorConfig() {
+  const idVend = Number(document.getElementById('cfg-add-vend')?.value || 0);
+  const email  = (document.getElementById('cfg-add-email')?.value || '').trim().toLowerCase();
+  if (!idVend) { toast('Selecione um vendedor','err'); return; }
+  if (!email || !email.includes('@')) { toast('Informe um e-mail válido','err'); return; }
+  const nome = (S.vendedores||[]).find(v=>v.id_vendedor===idVend)?.nome_vendedor || '';
+  try {
+    await sbInsert('atac_config_usuario', {
+      email, id_vendedor_erp: idVend, nome_vendedor: nome, ativo: true,
+      atualizado_em: new Date().toISOString()
+    });
+    await logAcao('ADICIONAR_VENDEDOR', { nome_vendedor: nome, detalhe: { email, id_vendedor_erp: idVend } });
+    toast(`✅ ${sN(nome)} adicionado à equipe`);
+    renderVendedoresConfig();
+  } catch(e) {
+    toast('❌ Falha ao adicionar: ' + (e?.message || e), 'err');
+  }
+}
+
 window.setCfgTab=setCfgTab;
+window.renderVendedoresConfig=renderVendedoresConfig;
+window.toggleVendedorAtivo=toggleVendedorAtivo;
+window.addVendedorConfig=addVendedorConfig;
 window.setTopPeriod=setTopPeriod;
 window.renderLogAcoes=renderLogAcoes;
 window.renderLogPainel=renderLogPainel;
