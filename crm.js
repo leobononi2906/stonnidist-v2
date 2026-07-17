@@ -28,6 +28,7 @@ const S = {
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [], vendPainel: [],
   meuVendedor: null,   // {id, nome} do login — nao confundir com F.vendedorId, que e filtro de tela
+  meuNome: '',         // nome de quem esta logado — usado em criado_por
   notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
@@ -242,10 +243,14 @@ async function aplicarFiltroUsuario() {
     if (!email) return;
     S.userEmail = email; // salva para uso no logAcao
     window._userEmail = email;
+    // Fallback do nome antes de saber o vendedor: metadata do login, senao o email.
+    // criado_por virou campo de auditoria — nunca mais digitado a mao.
+    S.meuNome = sess?.user?.user_metadata?.nome || email.split('@')[0];
     const cfg = await sbQ('atac_config_usuario', `select=id_vendedor_erp,nome_vendedor&email=eq.${encodeURIComponent(email)}`);
     if (Array.isArray(cfg) && cfg.length > 0) {
       const { id_vendedor_erp, nome_vendedor } = cfg[0];
       S.meuVendedor = { id: id_vendedor_erp, nome: nome_vendedor };
+      S.meuNome = nome_vendedor;
       F.vendedorId = id_vendedor_erp;
       // Atualizar o select de vendedor na topbar
       const sel = document.getElementById('vend-filter');
@@ -1328,7 +1333,9 @@ function renderDrawer(){
           <option value="FOLLOWUP">Follow-up</option>
           <option value="LIGACAO">Ligação</option>
         </select>
-        <input id="nota-criado" placeholder="Criado por" />
+        <span id="nota-criado-lbl" style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);white-space:nowrap;padding:0 4px" title="Vem do seu login — nao e digitado">
+          <span style="font-size:12px">👤</span><strong style="color:var(--text-secondary)">${escH(S.meuNome||'—')}</strong>
+        </span>
       </div>
       <textarea id="nota-texto" rows="3" placeholder="Texto da nota..."></textarea>
       <input id="nota-data" type="date" style="display:none" />
@@ -1791,9 +1798,10 @@ function reagendarNotaDrawer(id, dataAtual, qtdReag) {
 async function salvarNota(cId,cNome,vId,vNome){
   const tipo=document.getElementById('nota-tipo')?.value;
   const texto=document.getElementById('nota-texto')?.value?.trim();
-  const criado=document.getElementById('nota-criado')?.value?.trim();
+  const criado = S.meuNome || '';   // auditoria: sai do login, nao da digitacao
   const data=document.getElementById('nota-data')?.value;
-  if(!texto||!criado){toast('Preencha texto e criado por','err');return;}
+  if(!texto){toast('Escreva o texto da nota','err');return;}
+  if(!criado){toast('Seu login nao esta vinculado a um vendedor — avise o Leo','err');return;}
   if(['TAREFA','FOLLOWUP'].includes(tipo)&&!data){toast('Informe a data prevista','err');return;}
   await sbInsert('atac_crm_notas',{id_cliente:cId,nome_cliente:cNome,tipo,texto,criado_por:criado,data_prevista:data||null,data_criacao:new Date().toISOString(),id_vendedor_responsavel:vId||null,nome_vendedor_responsavel:vNome||null,resolvido:false});
   await logAcao('CRIAR_NOTA', {
@@ -2445,7 +2453,9 @@ function abrirNovoContato(tel, nome, atend) {
     (u.usuario_umbler||'').toLowerCase() === (atend||'').toLowerCase() ||
     (u.nome_vendedor_erp||'').toLowerCase() === (atend||'').toLowerCase()
   );
-  const vendId = uvMatch?.id_vendedor_erp || null;
+  // Padrao: o atendente da Umbler; se nao der match, quem esta logado.
+  // Continua alteravel — explicito na tela ganha de automatico invisivel.
+  const vendId = uvMatch?.id_vendedor_erp || S.meuVendedor?.id || null;
   const sel = document.getElementById('nc-vend');
   if (sel) {
     sel.innerHTML = '<option value="">Sem vendedor (Prospecção Geral)</option>' +
@@ -3008,10 +3018,12 @@ function abrirNovaAtividade(dataPrevista) {
   document.getElementById('na-data').value = dataPrevista;
   document.getElementById('na-cliente').value = '';
   document.getElementById('na-texto').value = '';
-  document.getElementById('na-criado').value = '';
+  // criado_por sai do login (era input livre — gerou 19 grafias para 6 pessoas)
+  const elC = document.getElementById('na-criado');
+  if (elC) { elC.value = S.meuNome || ''; elC.readOnly = true; elC.style.opacity = '.7'; elC.title = 'Vem do seu login'; }
   const sel = document.getElementById('na-vend');
   if(sel) sel.innerHTML = '<option value="">Sem vendedor</option>' +
-    S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===F.vendedorId?' selected':''}>${v.nome_vendedor}</option>`).join('');
+    S.vendedores.map(v=>`<option value="${v.id_vendedor}"${v.id_vendedor===(S.meuVendedor?.id||F.vendedorId)?' selected':''}>${v.nome_vendedor}</option>`).join('');
   m.classList.add('open');
 }
 function fecharNovaAtividade() { document.getElementById('modal-nova-ativ')?.classList.remove('open'); }
@@ -3019,7 +3031,7 @@ function fecharNovaAtividade() { document.getElementById('modal-nova-ativ')?.cla
 async function salvarNovaAtividade() {
   const cliente = document.getElementById('na-cliente')?.value?.trim();
   const texto   = document.getElementById('na-texto')?.value?.trim();
-  const criado  = document.getElementById('na-criado')?.value?.trim();
+  const criado  = S.meuNome || document.getElementById('na-criado')?.value?.trim();
   const data    = document.getElementById('na-data')?.value;
   const vendId  = document.getElementById('na-vend')?.value;
   if (!cliente || !texto || !criado) { toast('Preencha cliente, texto e criado por', 'err'); return; }
