@@ -500,7 +500,7 @@ async function loadUmbler() {
   if (el) { el.textContent = cnt; el.classList.toggle('hidden', cnt === 0); }
 }
 async function loadUmblerVendMap() {
-  const d=await sbQ('atac_umbler_vendedor','select=id,id_membro_umbler,id_vendedor_erp,usuario_umbler,nome_vendedor_erp&ativo=eq.true');
+  const d=await sbQ('atac_umbler_vendedor','select=id,id_membro_umbler,id_vendedor_erp,usuario_umbler,nome_vendedor_erp,inbox_umbler,ativo&ativo=eq.true');
   S.umblerVendMap=Array.isArray(d)?d:[];
 }
 async function loadOverdue() {
