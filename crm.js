@@ -27,6 +27,7 @@ const S = {
   tab: 'home',
   docs: [], vendedores: [], empresas: [], dimMap: new Map(),
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [], vendPainel: [],
+  meuVendedor: null,   // {id, nome} do login — nao confundir com F.vendedorId, que e filtro de tela
   notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
@@ -244,6 +245,7 @@ async function aplicarFiltroUsuario() {
     const cfg = await sbQ('atac_config_usuario', `select=id_vendedor_erp,nome_vendedor&email=eq.${encodeURIComponent(email)}`);
     if (Array.isArray(cfg) && cfg.length > 0) {
       const { id_vendedor_erp, nome_vendedor } = cfg[0];
+      S.meuVendedor = { id: id_vendedor_erp, nome: nome_vendedor };
       F.vendedorId = id_vendedor_erp;
       // Atualizar o select de vendedor na topbar
       const sel = document.getElementById('vend-filter');
@@ -2526,31 +2528,45 @@ async function salvarNovoContato() {
       });
     }
 
-    // 3. Vincular vendedor
-    if (vendId) {
-      const vend = S.vendedores.find(v => v.id_vendedor === Number(vendId));
+    // 3. Vincular vendedor.
+    // Sem escolha no modal, o cliente fica com QUEM CRIOU — quem atendeu na Umbler
+    // e o dono natural. Cair no balcao seria convidar outro a pegar o lead do colega.
+    // O prazo de 15 dias ja protege contra quem cadastra e abandona.
+    const donoId   = Number(vendId) || S.meuVendedor?.id || null;
+    const donoNome = vendId
+      ? (S.vendedores.find(v => v.id_vendedor === Number(vendId))?.nome_vendedor || '')
+      : (S.meuVendedor?.nome || '');
+    if (donoId) {
       await sbUpsert('atac_cliente_vendedor', {
         id_cliente: newId, nome_cliente: nome,
-        id_vendedor_responsavel: Number(vendId),
-        nome_vendedor_responsavel: vend?.nome_vendedor || '',
+        id_vendedor_responsavel: donoId,
+        nome_vendedor_responsavel: donoNome,
+        liberado_em: null,          // reassume: se ja teve vinculo, volta a valer
+        motivo_liberacao: null,
+        // DEFAULT now() so vale no INSERT. Sem isso, cliente que ja teve vinculo
+        // mantem a data velha e o cron das 06:10 solta ele na manha seguinte.
+        atualizado_em: new Date().toISOString(),
         atualizado_por: 'UMBLER'
       }, 'id_cliente');
     }
 
     await logAcao('CRIAR_CLIENTE', {
       id_cliente: newId, nome_cliente: nome,
-      id_vendedor: vendId||null, nome_vendedor: vendId ? S.vendedores.find(v=>v.id_vendedor===Number(vendId))?.nome_vendedor : null,
-      detalhe: { telefone: tel, origem: 'UMBLER', erp_vinculado: !!erpMatch }
+      id_vendedor: donoId, nome_vendedor: donoNome || null,
+      detalhe: { telefone: tel, origem: 'UMBLER', erp_vinculado: !!erpMatch,
+                 dono_por: vendId ? 'ESCOLHIDO_NO_MODAL' : 'LOGIN_DE_QUEM_CRIOU' }
     });
     fecharNovoContato();
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
-    if (vendId) {
-      const vNome = S.vendedores.find(v=>String(v.id_vendedor)===String(vendId))?.nome_vendedor||'';
-      toast(`✅ ${nome} adicionado à carteira de ${sN(vNome)}`);
+    if (donoId) {
+      gotoTab('crm');
       setMainTab('carteira');
+      setSub('sem_compra');   // cliente novo nasce sem compra — abre onde ele esta
+      toast(`✅ ${nome} entrou na carteira de ${sN(donoNome)} — em "Sem compra"`);
     } else {
-      toast(`✅ ${nome} adicionado à Prospecção`);
-      setMainTab('prospeccao');
+      // so cai aqui se o login nao estiver cadastrado em atac_config_usuario
+      gotoTab('prospeccao');
+      toast(`✅ ${nome} foi para a Prospecção — seu login não está vinculado a um vendedor`, 'ok');
     }
     renderUmbler(); renderLista();
   } catch(e) {
