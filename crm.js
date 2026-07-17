@@ -32,7 +32,7 @@ const S = {
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   topPeriod: '1m',       // período do Top 10 Clientes
   subFilter: 'todos',
-  pSub: 'todos', pSort: 'nome_az',
+  pSub: 'todos', pSort: 'nome_az', cSort: 'contato_ant',
   search: '',
   selId: null, selCliente: null,
   expandVend: null,
@@ -1089,7 +1089,29 @@ function filteredCarteira(){
       return true;
     });
   }
-  return d;
+  return [...d].sort(cmpClientes(S.cSort));
+}
+// Ordenacao compartilhada Carteira/Prospeccao.
+// Datas nulas SEMPRE por ultimo, nos dois sentidos — cliente sem compra no topo
+// de "ultima compra" nao ajuda ninguem.
+function cmpClientes(modo){
+  const d = v => v ? new Date(v).getTime() : null;
+  const porData = (campo, desc) => (a,b) => {
+    const x=d(a[campo]), y=d(b[campo]);
+    if(x===null && y===null) return (a.nome_cliente||'').localeCompare(b.nome_cliente||'');
+    if(x===null) return 1;
+    if(y===null) return -1;
+    return desc ? y-x : x-y;
+  };
+  switch(modo){
+    case 'compra_rec':  return porData('ultima_compra', true);
+    case 'compra_ant':  return porData('ultima_compra', false);
+    case 'contato_rec': return porData('ultima_interacao', true);
+    case 'contato_ant': return porData('ultima_interacao', false);
+    case 'fat_desc':    return (a,b) => Number(b.faturamento_total||0) - Number(a.faturamento_total||0);
+    case 'vendedor_az': return (a,b) => (a.nome_ultimo_responsavel||'zzz').localeCompare(b.nome_ultimo_responsavel||'zzz');
+    default:            return (a,b) => (a.nome_cliente||'').localeCompare(b.nome_cliente||'');
+  }
 }
 function filteredProsp(){
   let d = S.prospGeral;
@@ -1102,11 +1124,7 @@ function filteredProsp(){
   if (S.pSub === 'comprou')    d = d.filter(c => c.status_crm !== 'PROSPECCAO');
   if (S.pSub === 'sem_compra') d = d.filter(c => c.status_crm === 'PROSPECCAO');
 
-  return [...d].sort((a,b) => {
-    if (S.pSort === 'nome_az')     return (a.nome_cliente||'').localeCompare(b.nome_cliente||'');
-    if (S.pSort === 'vendedor_az') return (a.nome_ultimo_responsavel||'zzz').localeCompare(b.nome_ultimo_responsavel||'zzz');
-    return (b.dias_sem_compra||9999) - (a.dias_sem_compra||9999);
-  });
+  return [...d].sort(cmpClientes(S.pSort));
 }
 
 // ── Drawer ─────────────────────────────────────────────────
@@ -2321,6 +2339,7 @@ function atualizaBadgeProsp(){
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
 function setPSort(v){S.pSort=v;renderLista();}
+function setCSort(v){S.cSort=v;renderLista();}
 function handleSearch(v){
   S.search = v;
   // Se está na agenda, muda para carteira sem resetar a busca
@@ -3117,6 +3136,7 @@ window.assumirCliente=assumirCliente;
 window.setSub=setSub;
 window.setPSub=setPSub;
 window.setPSort=setPSort;
+window.setCSort=setCSort;
 window.handleSearch=handleSearch;
 window.buscarNoSupabase=buscarNoSupabase;
 window.toggleVend=toggleVend;
