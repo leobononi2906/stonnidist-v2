@@ -553,15 +553,13 @@ input,select,textarea { width:100%; }
                 <button data-sf="ativo" class="fb" onclick="setSub('ativo')">Ativo</button>
                 <button data-sf="atencao" class="fb" onclick="setSub('atencao')">Atenção</button>
                 <button data-sf="em_risco" class="fb" onclick="setSub('em_risco')">Em Risco</button>
+                <button data-sf="sem_compra" class="fb" onclick="setSub('sem_compra')" title="Assumidos que ainda não compraram ou não compram há mais de 180 dias">Sem compra</button>
               </div>
               <div id="ctrl-p" style="display:none;flex-direction:column;gap:6px">
-                <div class="tabs-row">
-                  <button data-pt="minha" class="tb-btn on" onclick="setProspTab('minha')" style="font-size:11px;padding:5px 10px">Minha</button>
-                  <button data-pt="geral" class="tb-btn" onclick="setProspTab('geral')" style="font-size:11px;padding:5px 10px">Geral (sem vendedor)</button>
-                </div>
                 <div id="ctrl-pp" class="frow">
                   <button data-psub="todos" class="fb on" onclick="setPSub('todos')">Todos</button>
-                  <button data-psub="atencao" class="fb" onclick="setPSub('atencao')">Atenção &gt;30d</button>
+                  <button data-psub="comprou" class="fb" onclick="setPSub('comprou')" title="Já comprou nos últimos 180 dias">Comprou &le;180d</button>
+                  <button data-psub="sem_compra" class="fb" onclick="setPSub('sem_compra')" title="Nunca comprou ou não compra há mais de 180 dias">Sem compra</button>
                   <select id="psort" onchange="setPSort(this.value)" style="width:auto;font-size:11px;padding:4px 8px;height:28px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text-primary);outline:none;margin-left:auto">
                     <option value="nome_az">Nome A-Z</option>
                     <option value="mais_antigo">Mais antigo</option>
