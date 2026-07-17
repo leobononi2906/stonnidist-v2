@@ -89,7 +89,7 @@ function bdg(s) {
   return `<span class="bdg ${cls}">${lbl}</span>`;
 }
 function tipoBdg(t) {
-  const m={OBSERVACAO:'bdg-obs',TAREFA:'bdg-tar',FOLLOWUP:'bdg-fol',LIGACAO:'bdg-lig'};
+  const m={OBSERVACAO:'bdg-obs',TAREFA:'bdg-tar',FOLLOWUP:'bdg-fol',LIGACAO:'bdg-lig',SISTEMA:'bdg-sis'};
   return `<span class="bdg-tipo ${m[t]||'bdg-obs'}">${t}</span>`;
 }
 function semaforo(c) {
@@ -322,10 +322,24 @@ async function loadProspeccao() {
   const d=await sbQ('atac_crm_clientes',params);
   const prosp=(Array.isArray(d)?d:[]);
 
-  // Prospecção Geral (sem vendedor vinculado)
+  // Prospecção Geral = sem vendedor vinculado + carteira de vendedor inativo
   const gParams='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast';
   const gd=await sbQ('atac_crm_clientes',gParams);
-  S.prospGeral=(Array.isArray(gd)?gd:[]);
+  let geral=(Array.isArray(gd)?gd:[]);
+
+  // Clientes presos na carteira de quem saiu da equipe: ficam disponíveis para garimpo.
+  // Sem filtro de status — os ATIVOS e em ATENÇÃO são justamente os que valem a pena.
+  try {
+    const inat = await sbQ('atac_config_usuario','select=id_vendedor_erp,nome_vendedor&ativo=is.false');
+    const ids = (Array.isArray(inat)?inat:[]).map(v=>v.id_vendedor_erp).filter(Boolean);
+    if (ids.length) {
+      const gdi = await sbQ('atac_crm_clientes',
+        `select=*&id_vendedor_responsavel=in.(${ids.join(',')})&status_crm=neq.PERDIDO&order=dias_sem_compra.desc.nullslast`);
+      geral = geral.concat((Array.isArray(gdi)?gdi:[]).map(c=>({...c, _exVendedor: c.nome_vendedor_responsavel})));
+    }
+  } catch(e) { console.warn('carteira de vendedor inativo:', e); }
+
+  S.prospGeral = geral;
 
   // Verificar vencimentos: vendedor assumiu mas não interagiu no prazo
   // Buscar data de atribuição em atac_cliente_vendedor
@@ -351,7 +365,7 @@ async function loadProspeccao() {
         // Nota automática de registro
         await sbInsert('atac_crm_notas',{
           id_cliente: c.id_cliente, nome_cliente: c.nome_cliente,
-          tipo: 'OBSERVACAO',
+          tipo: 'SISTEMA',
           texto: `Prazo de prospecção vencido (${diasAtrib} dias sem interação). Cliente devolvido à Prospecção Geral pelo sistema.`,
           resolvido: true, data_criacao: new Date().toISOString(),
           data_prevista: new Date().toISOString().split('T')[0],
@@ -1006,7 +1020,8 @@ function renderLista() {
           <div style="flex:1;min-width:0" onclick="selCliente(${c.id_cliente})">
             <div class="pg-row1">
               <span class="pg-nome">${c.nome_cliente}</span>
-              ${bdg('PROSPECCAO')}
+              ${bdg(c.status_crm||'PROSPECCAO')}
+              ${c._exVendedor?`<span title="Carteira de vendedor que saiu da equipe — disponível para assumir" style="font-size:9.5px;font-weight:700;background:var(--orange-bg);color:var(--orange);border-radius:4px;padding:1px 6px;white-space:nowrap">era de ${sN(c._exVendedor)}</span>`:''}
             </div>
             <div class="pg-meta">
               <span>${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:''):'—'}</span>
