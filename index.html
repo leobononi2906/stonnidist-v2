@@ -449,6 +449,10 @@ input,select,textarea { width:100%; }
         <span class="nav-icon">💼</span> CRM
         <span id="umbl-cnt" class="nav-badge hidden">0</span>
       </div>
+      <div class="nav-item" id="si-prospeccao" onclick="gotoTab('prospeccao')">
+        <span class="nav-icon">⛏️</span> Prospecção
+        <span id="prosp-cnt" class="nav-badge hidden" style="background:#0077CC">0</span>
+      </div>
       <div class="nav-separator"></div>
       <div class="nav-item" id="si-config" onclick="gotoTab('config')">
         <span class="nav-icon">⚙️</span> Configurações
@@ -545,7 +549,6 @@ input,select,textarea { width:100%; }
               </div>
               <div class="tabs-row">
                 <button id="tab-c" class="tb-btn on" onclick="setMainTab('carteira')">Carteira</button>
-                <button id="tab-p" class="tb-btn" onclick="setMainTab('prospeccao')">Prospecção</button>
                 <button id="tab-a" class="tb-btn" onclick="setMainTab('agenda')">📋 Agenda</button>
               </div>
               <div id="ctrl-c" class="frow">
@@ -846,7 +849,8 @@ window.sb = sb;
 const PAGINAS = {
   home:       { title:'Home',          breadcrumb:'Stonni Atacado · Home' },
   vendedores: { title:'Vendedores',    breadcrumb:'Stonni Atacado · Vendedores' },
-  crm:        { title:'CRM',           breadcrumb:'Stonni Atacado · CRM' },
+  crm:        { title:'CRM',           breadcrumb:'Stonni Atacado · CRM · Carteira' },
+  prospeccao: { title:'Prospecção',   breadcrumb:'Stonni Atacado · Prospecção · balcão de garimpo' },
   config:     { title:'Configurações', breadcrumb:'Stonni Atacado · Configurações' },
 };
 
@@ -937,7 +941,7 @@ window.setPageInfo = setPageInfo;
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 </script>
-<script src="crm.js?v=20260717c"></script>
+<script src="crm.js?v=20260717d"></script>
 
 <!-- MODAL EDITAR VÍNCULO ERP -->
 <div id="modal-edit-vinc-erp" class="modal-ov">
