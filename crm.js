@@ -32,7 +32,6 @@ const S = {
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   topPeriod: '1m',       // período do Top 10 Clientes
   subFilter: 'todos',
-  prospTab: 'minha',   // 'minha' | 'geral'
   pSub: 'todos', pSort: 'nome_az',
   search: '',
   selId: null, selCliente: null,
@@ -305,87 +304,25 @@ async function loadDocs() {
   populateEmpFilter();
 }
 async function loadCarteira() {
-  // Filtrar status no banco: pega ATIVO, ATENCAO, PERDIDO — exclui PROSPECCAO
-  let params='select=*&status_crm=neq.PROSPECCAO&order=dias_sem_interacao.desc.nullslast';
+  // Carteira = TODO cliente com dono efetivo. A view v5 já exclui vínculo
+  // liberado e vendedor inativo, então basta id_vendedor_responsavel != null.
+  // Inclui quem ainda não comprou: a Prospecção agora é só balcão de garimpo,
+  // e sem isso esses clientes sumiriam da tela do vendedor.
+  let params='select=*&id_vendedor_responsavel=not.is.null&order=dias_sem_interacao.desc.nullslast';
   if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
   const d=await sbQ('atac_crm_clientes',params);
-  S.carteira=(Array.isArray(d)?d:[]).filter(c=>{
-    // Clientes sem compra com vendedor ficam na carteira também
-    if(c.ultima_compra==null && c.id_vendedor_responsavel!=null) return true;
-    return c.status_crm !== 'PROSPECCAO';
-  });
+  S.carteira=(Array.isArray(d)?d:[]);
 }
 async function loadProspeccao() {
-  // Prospecção do vendedor (com vínculo)
-  let params='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=not.is.null&order=dias_sem_interacao.desc.nullslast';
-  if(F.vendedorId) params+=`&id_vendedor_responsavel=eq.${F.vendedorId}`;
-  const d=await sbQ('atac_crm_clientes',params);
-  const prosp=(Array.isArray(d)?d:[]);
-
-  // Prospecção Geral = sem vendedor vinculado + carteira de vendedor inativo
-  const gParams='select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast';
-  const gd=await sbQ('atac_crm_clientes',gParams);
-  let geral=(Array.isArray(gd)?gd:[]);
-
-  // Clientes presos na carteira de quem saiu da equipe: ficam disponíveis para garimpo.
-  // Sem filtro de status — os ATIVOS e em ATENÇÃO são justamente os que valem a pena.
-  try {
-    const inat = await sbQ('atac_config_usuario','select=id_vendedor_erp,nome_vendedor&ativo=is.false');
-    const ids = (Array.isArray(inat)?inat:[]).map(v=>v.id_vendedor_erp).filter(Boolean);
-    if (ids.length) {
-      const gdi = await sbQ('atac_crm_clientes',
-        `select=*&id_vendedor_responsavel=in.(${ids.join(',')})&status_crm=neq.PERDIDO&order=dias_sem_compra.desc.nullslast`);
-      geral = geral.concat((Array.isArray(gdi)?gdi:[]).map(c=>({...c, _exVendedor: c.nome_vendedor_responsavel})));
-    }
-  } catch(e) { console.warn('carteira de vendedor inativo:', e); }
-
-  S.prospGeral = geral;
-
-  // Verificar vencimentos: vendedor assumiu mas não interagiu no prazo
-  // Buscar data de atribuição em atac_cliente_vendedor
-  if(prosp.length){
-    const ids=prosp.map(c=>c.id_cliente).join(',');
-    const vincData=await sbQ('atac_cliente_vendedor',
-      `select=id_cliente,atualizado_em&id_cliente=in.(${ids})`);
-    const vincMap=new Map((Array.isArray(vincData)?vincData:[]).map(v=>[v.id_cliente,v.atualizado_em]));
-
-    const prazo=CFG.prospeccao_prazo_contato_dias;
-    const vencidos=new Set();
-    const hoje=Date.now();
-
-    for(const c of prosp){
-      const atrib=vincMap.get(c.id_cliente);
-      if(!atrib) continue;
-      const diasAtrib=Math.floor((hoje-new Date(atrib).getTime())/86400000);
-      // Vencido = atribuído há mais dias que o prazo E sem interação desde a atribuição
-      if(diasAtrib>prazo && (c.dias_sem_interacao==null || c.dias_sem_interacao>=diasAtrib)){
-        vencidos.add(c.id_cliente);
-        // Liberar automaticamente: remove vínculo → volta para Prospecção Geral
-        await sbDel('atac_cliente_vendedor','id_cliente',c.id_cliente);
-        // Nota automática de registro
-        await sbInsert('atac_crm_notas',{
-          id_cliente: c.id_cliente, nome_cliente: c.nome_cliente,
-          tipo: 'SISTEMA',
-          texto: `Prazo de prospecção vencido (${diasAtrib} dias sem interação). Cliente devolvido à Prospecção Geral pelo sistema.`,
-          resolvido: true, data_criacao: new Date().toISOString(),
-          data_prevista: new Date().toISOString().split('T')[0],
-          atualizado_por: 'SISTEMA'
-        });
-      }
-    }
-    S.prospVencidos=vencidos;
-    // Remove os vencidos da lista local (já foram liberados)
-    S.prospeccao=prosp.filter(c=>!vencidos.has(c.id_cliente));
-    // Recarrega geral para incluir os recém-liberados
-    if(vencidos.size>0){
-      const gd2=await sbQ('atac_crm_clientes','select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast');
-      S.prospGeral=Array.isArray(gd2)?gd2:[];
-      if(vencidos.size>0) toast(`${vencidos.size} cliente(s) devolvido(s) à Prospecção Geral por prazo vencido`,'err');
-    }
-  } else {
-    S.prospeccao=prosp;
-    S.prospVencidos=new Set();
-  }
+  // Prospecção = BALCÃO. Só o que está disponível para garimpo: sem vínculo,
+  // vínculo liberado, ou vendedor inativo — a view v5 resolve os três.
+  // O vencimento de prazo saiu daqui e virou cron no banco (antes só rodava
+  // se alguém abrisse esta aba no navegador).
+  const d = await sbQ('atac_crm_clientes',
+    'select=*&id_vendedor_responsavel=is.null&order=dias_sem_compra.desc.nullslast');
+  S.prospGeral = (Array.isArray(d) ? d : []);
+  S.prospeccao = [];
+  S.prospVencidos = new Set();
 }
 async function loadUmbler() {
   const [cts, tels] = await Promise.all([
@@ -1002,12 +939,12 @@ function renderLista() {
   const el=document.getElementById('cl-list');if(!el)return;
 
   // Prospecção Geral — cards diferentes com botão Assumir
-  if(S.mainTab==='prospeccao' && S.prospTab==='geral'){
+  if(S.mainTab==='prospeccao'){
     const data=filteredProsp();
     if(!data.length){
       el.innerHTML=`<div class="empty-msg">
-        <p style="margin-bottom:8px">Nenhum cliente na prospecção geral</p>
-        <p style="font-size:11px;color:#334155">Clientes com +${CFG.compra_risco_dias} dias sem compra e sem vendedor aparecem aqui</p>
+        <p style="margin-bottom:8px">Nenhum cliente disponível na prospecção</p>
+        <p style="font-size:11px;color:#334155">Aparecem aqui os clientes sem vendedor, os liberados por prazo vencido e os de vendedor inativado</p>
       </div>`;
       return;
     }
@@ -1021,7 +958,7 @@ function renderLista() {
             <div class="pg-row1">
               <span class="pg-nome">${c.nome_cliente}</span>
               ${bdg(c.status_crm||'PROSPECCAO')}
-              ${c._exVendedor?`<span title="Carteira de vendedor que saiu da equipe — disponível para assumir" style="font-size:9.5px;font-weight:700;background:var(--orange-bg);color:var(--orange);border-radius:4px;padding:1px 6px;white-space:nowrap">era de ${sN(c._exVendedor)}</span>`:''}
+              ${c.nome_ultimo_responsavel?`<span title="${c.ex_vendedor_inativo?'Vendedor saiu da equipe':'Vínculo liberado por prazo vencido'} — disponível para assumir" style="font-size:9.5px;font-weight:700;background:var(--orange-bg);color:var(--orange);border-radius:4px;padding:1px 6px;white-space:nowrap">era de ${sN(c.nome_ultimo_responsavel)}</span>`:''}
             </div>
             <div class="pg-meta">
               <span>${dim.cidade?dim.cidade+(dim.uf?' - '+dim.uf:''):'—'}</span>
@@ -1053,10 +990,10 @@ function renderLista() {
     const sel=S.selId===c.id_cliente;
     const dc=c.dias_sem_compra??dias(c.ultima_compra);
 
-    // Prazo de conversão para Minha Prospecção
+    // Prazo de conversão: cliente assumido que ainda não comprou vive na Carteira
     let prazoBdg='';
-    if(S.mainTab==='prospeccao' && S.prospTab==='minha' && c.atribuido_em){
-      const diasAtrib=Math.floor((Date.now()-new Date(c.atribuido_em).getTime())/86400000);
+    if(S.mainTab==='carteira' && c.status_crm==='PROSPECCAO' && c.vinculo_em){
+      const diasAtrib=Math.floor((Date.now()-new Date(c.vinculo_em).getTime())/86400000);
       const restante=CFG.prospeccao_prazo_contato_dias-diasAtrib;
       if(restante>7) prazoBdg=`<span class="prazo-ok">Prazo: ${restante}d</span>`;
       else if(restante>0) prazoBdg=`<span class="prazo-warn">⚠ ${restante}d</span>`;
@@ -1107,6 +1044,9 @@ function filteredCarteira(){
   }
   if (S.subFilter !== 'todos') {
     d = d.filter(c => {
+      // Sem compra = nunca comprou ou não compra há mais de 180d (status PROSPECCAO na view)
+      if (S.subFilter === 'sem_compra') return c.status_crm === 'PROSPECCAO';
+      if (c.status_crm === 'PROSPECCAO') return false; // não polui Ativo/Atenção/Em Risco
       const st = getStatus(c);
       if (S.subFilter === 'ativo')    return st === 'ATIVO';
       if (S.subFilter === 'atencao')  return st === 'ATENCAO';
@@ -1117,21 +1057,21 @@ function filteredCarteira(){
   return d;
 }
 function filteredProsp(){
-  // Prospecção Geral (sem vendedor)
-  if(S.prospTab==='geral'){
-    let d=S.prospGeral;
-    if(S.search){const s=S.search.toLowerCase();d=d.filter(c=>(c.nome_cliente||'').toLowerCase().includes(s)||String(c.id_cliente).includes(s));}
-    return[...d].sort((a,b)=>{
-      if(S.pSort==='nome_az')return(a.nome_cliente||'').localeCompare(b.nome_cliente||'');
-      if(S.pSort==='mais_antigo')return(b.dias_sem_compra||9999)-(a.dias_sem_compra||9999);
-      return(b.dias_sem_compra||9999)-(a.dias_sem_compra||9999);
-    });
+  let d = S.prospGeral;
+  if (S.search) {
+    const q = S.search.toLowerCase();
+    d = d.filter(c => (c.nome_cliente||'').toLowerCase().includes(q) || String(c.id_cliente).includes(q));
   }
-  // Prospecção do Vendedor (com vínculo)
-  let d=S.prospeccao;
-  if(S.search){const s=S.search.toLowerCase();d=d.filter(c=>(c.nome_cliente||'').toLowerCase().includes(s));}
-  if(S.pSub==='atencao')d=d.filter(c=>(c.dias_sem_interacao||0)>30);
-  return[...d].sort((a,b)=>{if(S.pSort==='nome_az')return(a.nome_cliente||'').localeCompare(b.nome_cliente||'');if(S.pSort==='mais_antigo')return(b.dias_sem_interacao||0)-(a.dias_sem_interacao||0);if(S.pSort==='vendedor_az')return(a.nome_vendedor_responsavel||'zzz').localeCompare(b.nome_vendedor_responsavel||'zzz');return 0;});
+  // Filtros: comprou nos últimos 180d  vs  não compra há +180d (ou nunca).
+  // A view já traduz isso em status_crm — PROSPECCAO == não compra há +180d/nunca.
+  if (S.pSub === 'comprou')    d = d.filter(c => c.status_crm !== 'PROSPECCAO');
+  if (S.pSub === 'sem_compra') d = d.filter(c => c.status_crm === 'PROSPECCAO');
+
+  return [...d].sort((a,b) => {
+    if (S.pSort === 'nome_az')     return (a.nome_cliente||'').localeCompare(b.nome_cliente||'');
+    if (S.pSort === 'vendedor_az') return (a.nome_ultimo_responsavel||'zzz').localeCompare(b.nome_ultimo_responsavel||'zzz');
+    return (b.dias_sem_compra||9999) - (a.dias_sem_compra||9999);
+  });
 }
 
 // ── Drawer ─────────────────────────────────────────────────
@@ -1139,8 +1079,7 @@ async function selCliente(id){
   S.selId=id;
   let lista;
   if(S.mainTab==='carteira') lista=S.carteira;
-  else if(S.prospTab==='geral') lista=S.prospGeral;
-  else lista=S.prospeccao;
+  else lista=S.prospGeral;
   S.selCliente=lista.find(c=>c.id_cliente===id)||null;
   renderLista();
   document.getElementById('drawer')?.classList.add('open');
@@ -2318,7 +2257,7 @@ function setMainTab(tab){
   const ctrlP=document.getElementById('ctrl-p');
   if(ctrlP) ctrlP.style.display=(tab==='prospeccao')?'flex':'none';
   const ctrlPP=document.getElementById('ctrl-pp');
-  if(ctrlPP) ctrlPP.style.display=(tab==='prospeccao'&&S.prospTab==='minha')?'':'none';
+  if(ctrlPP) ctrlPP.style.display=(tab==='prospeccao')?'':'none';
   // Painel: lista+detalhe vs agenda
   const crmWrap=document.getElementById('crm-inner-wrap');
   const agendaPanel=document.getElementById('crm-agenda-panel');
@@ -2331,14 +2270,6 @@ function setMainTab(tab){
     if(agendaPanel) agendaPanel.style.display='none';
     renderLista();
   }
-}
-function setProspTab(pt){
-  S.prospTab=pt;S.selId=null;S.selCliente=null;closeDrawer();
-  document.querySelectorAll('[data-pt]').forEach(el=>el.classList.toggle('on',el.dataset.pt===pt));
-  // Filtros extras só aparecem na aba Minha
-  const ctrlPP=document.getElementById('ctrl-pp');
-  if(ctrlPP) ctrlPP.style.display=(pt==='minha')?'':'none';
-  renderLista();
 }
 function setSub(f){S.subFilter=f;document.querySelectorAll('[data-sf]').forEach(el=>el.classList.toggle('on',el.dataset.sf===f));renderLista();}
 function setPSub(v){S.pSub=v;document.querySelectorAll('[data-psub]').forEach(el=>el.classList.toggle('on',el.dataset.psub===v));renderLista();}
@@ -2372,17 +2303,13 @@ async function buscarNoSupabase(q) {
   el.innerHTML = '<div class="empty-msg" style="padding:16px"><div class="spinner" style="margin:0 auto 8px"></div>Buscando...</div>';
 
   const qEnc = encodeURIComponent(q);
-  const tab = S.mainTab === 'carteira' ? 'carteira' : (S.prospTab === 'geral' ? 'geral' : 'prosp');
+  const tab = S.mainTab === 'carteira' ? 'carteira' : 'geral';
   
   let params;
   if (tab === 'geral') {
-    params = `select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_compra.desc.nullslast&limit=50`;
-  } else if (tab === 'prosp') {
-    params = `select=*&status_crm=eq.PROSPECCAO&id_vendedor_responsavel=not.is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_interacao.desc.nullslast&limit=50`;
-    if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
+    params = `select=*&id_vendedor_responsavel=is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_compra.desc.nullslast&limit=50`;
   } else {
-    // Carteira: busca sem filtro de status para pegar todos
-    params = `select=*&nome_cliente=ilike.*${qEnc}*&order=dias_sem_interacao.desc.nullslast&limit=50`;
+    params = `select=*&id_vendedor_responsavel=not.is.null&nome_cliente=ilike.*${qEnc}*&order=dias_sem_interacao.desc.nullslast&limit=50`;
     if (F.vendedorId) params += `&id_vendedor_responsavel=eq.${F.vendedorId}`;
   }
 
@@ -2392,7 +2319,6 @@ async function buscarNoSupabase(q) {
   // Filtrar carteira vs prospecção nos resultados (e excluir CPFs)
   // CPF já filtrado na view atac_crm_clientes
   if (tab === 'carteira') {
-    results = results.filter(c => getStatus(c) !== 'PROSPECCAO');
     // Aplicar subfiltro
     if (S.subFilter !== 'todos') {
       results = results.filter(c => {
@@ -2552,15 +2478,14 @@ async function salvarNovoContato() {
     });
     fecharNovoContato();
     await Promise.all([loadUmbler(), loadCarteira(), loadProspeccao()]);
-    // Navegar para Prospecção → aba correta
     if (vendId) {
-      S.prospTab = 'minha';
-      toast(`✅ ${nome} adicionado à sua Prospecção`);
+      const vNome = S.vendedores.find(v=>String(v.id_vendedor)===String(vendId))?.nome_vendedor||'';
+      toast(`✅ ${nome} adicionado à carteira de ${sN(vNome)}`);
+      setMainTab('carteira');
     } else {
-      S.prospTab = 'geral';
-      toast(`✅ ${nome} adicionado à Prospecção Geral`);
+      toast(`✅ ${nome} adicionado à Prospecção`);
+      setMainTab('prospeccao');
     }
-    setMainTab('prospeccao');
     renderUmbler(); renderLista();
   } catch(e) {
     console.error('salvarNovoContato erro:', e);
@@ -2733,6 +2658,8 @@ async function assumirCliente(id, nomeCliente) {
   // Upsert em atac_cliente_vendedor — atualizado_em registra o momento da atribuição
   const r = await sbUpsert('atac_cliente_vendedor',{
     id_cliente: id,
+    liberado_em: null,          // reassume: vínculo volta a valer
+    motivo_liberacao: null,
     nome_cliente: nomeCliente,
     id_vendedor_responsavel: vId,
     nome_vendedor_responsavel: vNome,
@@ -3134,7 +3061,6 @@ window.onCustomDate=onCustomDate;
 window.onVendChange=onVendChange;
 window.onEmpChange=onEmpChange;
 window.setMainTab=setMainTab;
-window.setProspTab=setProspTab;
 window.assumirCliente=assumirCliente;
 window.setSub=setSub;
 window.setPSub=setPSub;
