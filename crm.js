@@ -593,7 +593,7 @@ async function loadDetalhe(id) {
   const todosIds = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
   const idsParam = todosIds.join(',');
   const peds = await sbQ('vw_comercial_docs_faturados',
-    `select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc,nome_cliente&tipo_saida=eq.DISTRIBUICAO&id_cliente=in.(${idsParam})&order=data_faturamento.desc&limit=15`);
+    `select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc,nome_cliente,nome_vendedor&tipo_saida=eq.DISTRIBUICAO&id_cliente=in.(${idsParam})&order=data_faturamento.desc&limit=15`);
   // Deduplicar por id_doc
   const pedSeen = new Set();
   S.pedidos = (Array.isArray(peds) ? peds : []).filter(p => {
@@ -1189,11 +1189,6 @@ function renderDrawer(){
         </button>
         ${!c.nome_vendedor_responsavel?`<button class="btn-assumir" style="padding:3px 9px;font-size:11px" onclick="assumirCliente(${c.id_cliente},'${esc(c.nome_cliente)}')">+ Assumir</button>`:''}
       </div>
-      ${c.vendedor_ultima_venda ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--text-muted)">
-        <span>🧾 Última venda:</span>
-        <strong style="color:var(--text-secondary);font-weight:600">${escH(sN(c.vendedor_ultima_venda))}</strong>
-        ${c.ultima_compra?`<span style="color:var(--text-muted)">· ${new Date(c.ultima_compra+'T00:00:00').toLocaleDateString('pt-BR')}</span>`:''}
-      </div>` : ''}
       <!-- Ações do cliente -->
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button onclick="abrirVincularERP(${c.id_cliente},'${esc(c.nome_cliente)}')"
@@ -1295,6 +1290,7 @@ function renderDrawer(){
             <tr>
               <th>Data</th>
               <th>NF</th>
+              <th>Vendedor</th>
               <th class="r">Valor</th>
               <th class="r">Itens</th>
             </tr>
@@ -1304,6 +1300,7 @@ function renderDrawer(){
               <tr>
                 <td>${fmtD(p.data_faturamento)}</td>
                 <td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-size:12px">${p.id_doc||'—'}</td>
+                <td style="font-size:11px;color:var(--text-secondary)">${p.nome_vendedor?escH(sN(p.nome_vendedor)):'—'}</td>
                 <td class="r" style="font-weight:600">${fmt(docFat(p))}</td>
                 <td class="r">${p.qtd_itens_doc||0}</td>
               </tr>`).join('')}
