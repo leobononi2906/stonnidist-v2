@@ -1189,6 +1189,11 @@ function renderDrawer(){
         </button>
         ${!c.nome_vendedor_responsavel?`<button class="btn-assumir" style="padding:3px 9px;font-size:11px" onclick="assumirCliente(${c.id_cliente},'${esc(c.nome_cliente)}')">+ Assumir</button>`:''}
       </div>
+      ${c.vendedor_ultima_venda ? `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--text-muted)">
+        <span>🧾 Última venda:</span>
+        <strong style="color:var(--text-secondary);font-weight:600">${escH(sN(c.vendedor_ultima_venda))}</strong>
+        ${c.ultima_compra?`<span style="color:var(--text-muted)">· ${new Date(c.ultima_compra+'T00:00:00').toLocaleDateString('pt-BR')}</span>`:''}
+      </div>` : ''}
       <!-- Ações do cliente -->
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button onclick="abrirVincularERP(${c.id_cliente},'${esc(c.nome_cliente)}')"
