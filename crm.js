@@ -1183,6 +1183,7 @@ function renderDrawer(){
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
         <span style="font-size:11px;color:var(--text-muted)">Vendedor:</span>
         <strong style="font-size:12px;color:var(--text-primary)">${c.nome_vendedor_responsavel?sN(c.nome_vendedor_responsavel):'<em style=\"color:var(--purple);font-style:normal;font-weight:600\">Sem vendedor</em>'}</strong>
+        ${c.dono_por_venda?`<span title="Vinculado automaticamente por ter feito a última venda de distribuição" style="font-size:9.5px;font-weight:700;background:var(--green-bg);color:var(--green);border-radius:4px;padding:2px 7px;white-space:nowrap">🧾 por venda</span>`:''}
         <button onclick="abrirModalVendedor(${c.id_cliente},'${esc(c.nome_cliente)}',${c.id_vendedor_responsavel||'null'})"
           style="font-size:11px;padding:3px 9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--blue-mid);background:var(--blue-pale);cursor:pointer;font-weight:600">
           ✎ Alterar
