@@ -29,6 +29,7 @@ const S = {
   carteira: [], prospeccao: [], umbler: [], umblerVendMap: [], vendPainel: [],
   meuVendedor: null,   // {id, nome} do login — nao confundir com F.vendedorId, que e filtro de tela
   meuNome: '',         // nome de quem esta logado — usado em criado_por
+  dupSugestao: null,   // sugestao de card duplicado no cliente aberto
   notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
@@ -534,13 +535,15 @@ async function loadToday() {
   renderAlertasCRM();
 }
 async function loadDetalhe(id) {
-  const [notas, tels, vincErp] = await Promise.all([
+  const [notas, tels, vincErp, dup] = await Promise.all([
     sbQ('atac_crm_notas', `select=*,reagendado,qtd_reagendamentos&id_cliente=eq.${id}&order=data_criacao.desc`),
     sbQ('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`),
     sbQ('atac_cliente_vinculos', `select=id,id_cliente_erp,nome_cliente_erp,cnpj_cpf_erp&id_cliente_crm=eq.${id}`),
+    sbQ('atac_duplicados_sugestao', `select=*&id_manual=eq.${id}`),
   ]);
   S.notas = Array.isArray(notas) ? notas : [];
   S.vinculosERP = Array.isArray(vincErp) ? vincErp : [];
+  S.dupSugestao = (Array.isArray(dup) && dup.length) ? dup[0] : null;
 
   // Sincronizar telefones do ERP (cliente + todos os vínculos ERP)
   const todosIdsERP = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
@@ -1169,6 +1172,17 @@ function renderDrawer(){
 
   el.innerHTML=`
     <div>
+      ${S.dupSugestao?`<div style="background:var(--warning-bg,#FEF5E7);border:1px solid var(--warning);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:#B45309;margin-bottom:3px">⚠️ Possível duplicado ${S.dupSugestao.motivo==='CNPJ'?'· mesmo CNPJ':'· mesmo telefone'}</div>
+        <div style="font-size:11.5px;color:var(--text-secondary);margin-bottom:8px">
+          Existe no ERP: <strong>${escH(sN(S.dupSugestao.nome_erp))}</strong>${S.dupSugestao.faturamento_erp?` · R$ ${Number(S.dupSugestao.faturamento_erp).toLocaleString('pt-BR',{maximumFractionDigits:0})} em distribuição`:''}.
+          ${S.dupSugestao.motivo==='TELEFONE'?'<br><span style="color:#B45309">Telefone igual não garante mesmo cliente — confira antes.</span>':''}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="fundirDuplicado()" style="font-size:11px;font-weight:700;padding:5px 12px;border:none;border-radius:var(--radius-sm);background:var(--green);color:#fff;cursor:pointer">Fundir cards</button>
+          <button onclick="ignorarDuplicado()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text-secondary);cursor:pointer">Ignorar</button>
+        </div>
+      </div>`:''}
       <div class="dc-nome">${c.nome_cliente}</div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
         ${bdg(st)}
@@ -2147,6 +2161,47 @@ async function confirmarVincERP(erpId, erpNome, cnpj) {
   renderDrawer();
   await Promise.all([loadCarteira(), loadProspeccao()]);
   renderLista();
+}
+
+async function fundirDuplicado() {
+  const d = S.dupSugestao;
+  if (!d) return;
+  const ok = await confirmarModal({
+    titulo: `Fundir com ${sN(d.nome_erp)}?`,
+    corpo: `O card <strong>${escH(sN(d.nome_manual))}</strong> vai ser vinculado ao cadastro do ERP <strong>${escH(sN(d.nome_erp))}</strong>. As notas, telefones e o vendedor deste card passam a valer para o cliente do ERP, e o faturamento aparece junto. Nada é apagado.`,
+    okTexto: 'Fundir', okCor: 'var(--green)'
+  });
+  if (!ok) return;
+  try {
+    // reusa a maquina de vinculo ERP: card manual (crm) aponta pro codigo ERP
+    const r = await sbInsert('atac_cliente_vinculos', {
+      id_cliente_crm: d.id_manual,
+      id_cliente_erp: d.id_erp,
+      nome_cliente_erp: d.nome_erp,
+      cnpj_cpf_erp: d.cnpj_erp || null,
+      vinculado_por: S.meuNome || 'CRM',
+    });
+    if (r && r.ok === false) { toast('Falha ao fundir', 'err'); return; }
+    await logAcao('FUNDIR_DUPLICADO', { id_cliente: d.id_manual, nome_cliente: d.nome_manual,
+      detalhe: { id_erp: d.id_erp, motivo: d.motivo } });
+    toast(`✅ Cards fundidos — ${sN(d.nome_erp)}`);
+    S.dupSugestao = null;
+    await Promise.all([loadCarteira(), loadProspeccao()]);
+    await selCliente(d.id_manual);
+  } catch(e) { toast('Erro: ' + (e?.message||e), 'err'); }
+}
+
+async function ignorarDuplicado() {
+  const d = S.dupSugestao;
+  if (!d) return;
+  try {
+    await sbInsert('atac_duplicados_ignorados', {
+      id_card_a: d.id_manual, id_card_b: d.id_erp, ignorado_por: S.meuNome || 'CRM'
+    });
+    S.dupSugestao = null;
+    toast('Sugestão dispensada');
+    renderDrawer();
+  } catch(e) { toast('Erro: ' + (e?.message||e), 'err'); }
 }
 
 async function desvincularERP(vincId, crmId, erpNome) {
@@ -3207,6 +3262,8 @@ window.fecharVincularERP=fecharVincularERP;
 window.searchVincERP=searchVincERP;
 window.confirmarVincERP=confirmarVincERP;
 window.desvincularERP=desvincularERP;
+window.fundirDuplicado=fundirDuplicado;
+window.ignorarDuplicado=ignorarDuplicado;
 window.editarVincERP=editarVincERP;
 window.fecharEditVincERP=fecharEditVincERP;
 window.salvarEditVincERP=salvarEditVincERP;
