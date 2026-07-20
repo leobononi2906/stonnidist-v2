@@ -642,13 +642,13 @@ async function loadDetalhe(id) {
     const [telSec, notasSec, dimSec, manualSec] = await Promise.all([
       sbQ('atac_cliente_telefones', `select=*&id_cliente=in.(${inSec})&order=principal.desc`),
       sbQ('atac_crm_notas', `select=*&id_cliente=in.(${inSec})&order=data_criacao.desc`),
-      sbQ('vw_dim_cliente', `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&id_cliente=in.(${inSec})`),
+      sbQ('vw_dim_cliente', `select=id_cliente,nome_cliente,cnpj,cpf,cidade,uf&id_cliente=in.(${inSec})`),
       sbQ('atac_clientes', `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&id_cliente=in.(${inSec})`),
     ]);
     const telArr = Array.isArray(telSec) ? telSec : [];
     const notasArr = Array.isArray(notasSec) ? notasSec : [];
     const nomeMap = new Map();
-    (Array.isArray(dimSec) ? dimSec : []).forEach(r => nomeMap.set(Number(r.id_cliente), r));
+    (Array.isArray(dimSec) ? dimSec : []).forEach(r => nomeMap.set(Number(r.id_cliente), { ...r, cnpj_cpf: r.cnpj || r.cpf || '' }));
     (Array.isArray(manualSec) ? manualSec : []).forEach(r => { if (!nomeMap.has(Number(r.id_cliente))) nomeMap.set(Number(r.id_cliente), r); });
     S.membrosSecundarios = idsSecundarios.map(cid => {
       const membro = membrosCard.find(m => Number(m.id_cliente) === cid) || {};
