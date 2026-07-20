@@ -267,6 +267,11 @@ input,select,textarea { width:100%; }
 
 .sec-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .sec-lbl { font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
+details.card-membros { margin:2px 0 4px; }
+details.card-membros > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px; padding:6px 0; user-select:none; }
+details.card-membros > summary::-webkit-details-marker { display:none; }
+details.card-membros .det-arrow { font-size:11px; color:var(--text-muted); transition:transform .15s ease; }
+details.card-membros[open] .det-arrow { transform:rotate(90deg); }
 .link-add { font-size:12px; color:var(--blue-mid); cursor:pointer; font-weight:600; transition:color 0.15s; }
 .link-add:hover { color:var(--blue-dark); }
 
@@ -953,7 +958,7 @@ window.setPageInfo = setPageInfo;
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 </script>
-<script src="crm.js?v=20260717l"></script>
+<script src="crm.js?v=20260720a"></script>
 
 <!-- MODAL EDITAR VÍNCULO ERP -->
 <div id="modal-edit-vinc-erp" class="modal-ov">
