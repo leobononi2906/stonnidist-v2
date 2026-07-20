@@ -30,7 +30,7 @@ const S = {
   meuVendedor: null,   // {id, nome} do login — nao confundir com F.vendedorId, que e filtro de tela
   meuNome: '',         // nome de quem esta logado — usado em criado_por
   dupSugestao: null,   // sugestao de card duplicado no cliente aberto
-  notas: [], telefones: [], pedidos: [], vinculosERP: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
+  notas: [], telefones: [], pedidos: [], vinculosERP: [], membrosSecundarios: [], umblerTelMap: new Map(), finAlerta: null, _descartarMotivo: '',  // vínculos ERP do cliente aberto
   overdueIds: new Set(),
   mainTab: 'carteira',  // 'carteira' | 'prospeccao' | 'agenda'
   topPeriod: '1m',       // período do Top 10 Clientes
@@ -321,8 +321,16 @@ async function loadConfig() {
   if(Array.isArray(d)) d.forEach(r=>{if(CFG.hasOwnProperty(r.chave))CFG[r.chave]=Number(r.valor);});
 }
 async function loadVendedores() {
-  const d=await sbQ('vw_dim_vendedor','select=id_vendedor,nome_vendedor,departamento');
-  S.vendedores=(Array.isArray(d)?d:[]).filter(v=>{const dept=(v.departamento||'').trim().toUpperCase();return dept==='DISTRIBUIDOR'||dept==='DISTRIBUICAO REPRESENTANTES';});
+  const [d, inativos] = await Promise.all([
+    sbQ('vw_dim_vendedor','select=id_vendedor,nome_vendedor,departamento'),
+    sbQ('atac_config_usuario','select=id_vendedor_erp&ativo=eq.false')
+  ]);
+  const idsInativos = new Set((Array.isArray(inativos)?inativos:[]).map(u=>Number(u.id_vendedor_erp)));
+  S.vendedores=(Array.isArray(d)?d:[]).filter(v=>{
+    const dept=(v.departamento||'').trim().toUpperCase();
+    const okDept = dept==='DISTRIBUIDOR'||dept==='DISTRIBUICAO REPRESENTANTES';
+    return okDept && !idsInativos.has(Number(v.id_vendedor));
+  });
 }
 async function loadDimMap() {
   const d=await sbQ('atac_clientes','select=id_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
@@ -535,6 +543,17 @@ async function loadToday() {
   renderAlertasCRM();
 }
 async function loadDetalhe(id) {
+  // ── Fundação de card: descobrir o card do cliente e todos os seus membros ──
+  const membroSelf = await sbQ('atac_card_membro', `select=id_card&id_cliente=eq.${id}`);
+  const idCard = (Array.isArray(membroSelf) && membroSelf.length) ? membroSelf[0].id_card : null;
+  let membrosCard = [];
+  if (idCard != null) {
+    const mm = await sbQ('atac_card_membro', `select=id_cliente,origem&id_card=eq.${idCard}`);
+    membrosCard = Array.isArray(mm) ? mm : [];
+  }
+  const idsSecundarios = membrosCard.map(m=>Number(m.id_cliente)).filter(x=>x!==Number(id));
+  const idsCard = [Number(id), ...idsSecundarios];
+
   const [notas, tels, vincErp, dup] = await Promise.all([
     sbQ('atac_crm_notas', `select=*,reagendado,qtd_reagendamentos&id_cliente=eq.${id}&order=data_criacao.desc`),
     sbQ('atac_cliente_telefones', `select=*&id_cliente=eq.${id}&order=principal.desc`),
@@ -592,8 +611,8 @@ async function loadDetalhe(id) {
     S.umblerTelMap = new Map();
   }
 
-  // Buscar pedidos de TODOS os IDs vinculados (cliente + ERPs vinculados)
-  const todosIds = [id, ...S.vinculosERP.map(v => v.id_cliente_erp)];
+  // Buscar pedidos de TODOS os membros do card (fundação) + vínculos ERP legados
+  const todosIds = Array.from(new Set([...idsCard, ...S.vinculosERP.map(v => Number(v.id_cliente_erp))]));
   const idsParam = todosIds.join(',');
   const peds = await sbQ('vw_comercial_docs_faturados',
     `select=id_doc,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc,nome_cliente,nome_vendedor&tipo_saida=eq.DISTRIBUICAO&id_cliente=in.(${idsParam})&order=data_faturamento.desc&limit=15`);
@@ -614,6 +633,40 @@ async function loadDetalhe(id) {
     S.finAlerta = { qtd: fins.length, total: totalAberto, maxAtraso, titulos: fins };
   } else {
     S.finAlerta = null;
+  }
+
+  // ── Membros secundários do card: nome + telefones + notas de cada cadastro vinculado ──
+  S.membrosSecundarios = [];
+  if (idsSecundarios.length > 0) {
+    const inSec = idsSecundarios.join(',');
+    const [telSec, notasSec, dimSec, manualSec] = await Promise.all([
+      sbQ('atac_cliente_telefones', `select=*&id_cliente=in.(${inSec})&order=principal.desc`),
+      sbQ('atac_crm_notas', `select=*&id_cliente=in.(${inSec})&order=data_criacao.desc`),
+      sbQ('vw_dim_cliente', `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&id_cliente=in.(${inSec})`),
+      sbQ('atac_clientes', `select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf&id_cliente=in.(${inSec})`),
+    ]);
+    const telArr = Array.isArray(telSec) ? telSec : [];
+    const notasArr = Array.isArray(notasSec) ? notasSec : [];
+    const nomeMap = new Map();
+    (Array.isArray(dimSec) ? dimSec : []).forEach(r => nomeMap.set(Number(r.id_cliente), r));
+    (Array.isArray(manualSec) ? manualSec : []).forEach(r => { if (!nomeMap.has(Number(r.id_cliente))) nomeMap.set(Number(r.id_cliente), r); });
+    S.membrosSecundarios = idsSecundarios.map(cid => {
+      const membro = membrosCard.find(m => Number(m.id_cliente) === cid) || {};
+      const info = nomeMap.get(cid) || {};
+      const seen = new Set();
+      const tls = telArr.filter(t => Number(t.id_cliente) === cid).filter(t => {
+        const k = (t.telefone || '').replace(/\D/g, ''); if (!k || seen.has(k)) return false; seen.add(k); return true;
+      });
+      return {
+        id_cliente: cid,
+        origem: membro.origem || 'ERP',
+        nome: info.nome_cliente || `#${cid}`,
+        cnpj_cpf: info.cnpj_cpf || '',
+        cidade: info.cidade || '', uf: info.uf || '',
+        telefones: tls,
+        notas: notasArr.filter(n => Number(n.id_cliente) === cid),
+      };
+    });
   }
 }
 
@@ -1296,6 +1349,45 @@ function renderDrawer(){
         </div>`;
       }).join('')||'<p style="color:#475569;font-size:12px">Nenhum telefone</p>'}
     </div>
+
+    ${(S.membrosSecundarios && S.membrosSecundarios.length) ? `
+    <div>
+      <details class="card-membros">
+        <summary>
+          <span class="det-arrow">▸</span>
+          <span class="sec-lbl">📇 Cadastros vinculados (${S.membrosSecundarios.length})</span>
+        </summary>
+        <p style="font-size:10px;color:var(--text-muted);margin:6px 0 8px">Telefones e notas de outros cadastros do mesmo cliente, reunidos neste card.</p>
+        ${S.membrosSecundarios.map(m=>`
+          <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;background:var(--surface2)">
+            <div style="font-size:12.5px;font-weight:700;color:var(--text-primary)">${escH(sN(m.nome))}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">
+              <span>${m.origem==='MANUAL'?'✍️ Manual':'🗄️ ERP'} · #${m.id_cliente}</span>
+              ${m.cnpj_cpf?`<span style="margin-left:8px;font-family:monospace">${fmtC(m.cnpj_cpf)}</span>`:''}
+              ${m.cidade?`<span style="margin-left:8px">${escH(m.cidade)}${m.uf?' - '+escH(m.uf):''}</span>`:''}
+            </div>
+            ${m.telefones.length?`
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:3px">
+                ${m.telefones.map(t=>{
+                  const umbl=S.umblerTelMap?.get(t.telefone);
+                  return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap">
+                    <span style="font-weight:600">📞 ${fmtP(t.telefone)}</span>
+                    ${t.nome_contato?`<span style="color:var(--text-muted)">${escH(t.nome_contato)}</span>`:''}
+                    ${umbl?`<span style="font-size:10px;color:var(--blue-mid);font-weight:600">💬 ${sN(umbl.nome_atendente)} · ${fmtD(umbl.ultimo_contato)}</span>`:''}
+                  </div>`;
+                }).join('')}
+              </div>`:'<div style="font-size:11px;color:var(--text-muted);margin-top:6px">Sem telefone neste cadastro</div>'}
+            ${m.notas.length?`
+              <div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;display:flex;flex-direction:column;gap:5px">
+                ${m.notas.map(n=>`
+                  <div style="font-size:11.5px;color:var(--text-secondary)">
+                    <span style="display:flex;align-items:center;gap:5px">${tipoBdg(n.tipo)}<span style="color:var(--text-muted);font-size:10px">${fmtD(n.data_criacao)}${n.criado_por?' · '+escH(n.criado_por):''}</span></span>
+                    <div style="margin-top:2px">${escH(n.texto||'')}</div>
+                  </div>`).join('')}
+              </div>`:''}
+          </div>`).join('')}
+      </details>
+    </div>` : ''}
 
     <div>
       <div class="sec-head"><span class="sec-lbl">📦 Últimos Pedidos</span></div>
