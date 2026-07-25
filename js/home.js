@@ -206,9 +206,10 @@ function renderHome() {
   });
 
   const cliDeltas = [];
+  const MIN_CLI = 500; // mínimo para evitar ruído
   cliCur.forEach((cur, id) => {
     const prev = cliPrev.get(id);
-    if (prev && prev.fat > 0) {
+    if (prev && prev.fat > MIN_CLI) {
       cliDeltas.push({ nome: cur.nome, cur: cur.fat, prev: prev.fat, delta: ((cur.fat - prev.fat) / prev.fat) * 100 });
     }
   });
@@ -220,10 +221,20 @@ function renderHome() {
 
   function _cliRow(c) {
     const cls = c.delta >= 0 ? 'delta-pos' : 'delta-neg';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:12px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(_truncate(c.nome, 28))}</span>
-      <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;width:55px;text-align:right;font-family:'DM Mono',monospace">${fmtK(c.cur)}</span>
-      <span class="${cls}" style="flex-shrink:0;width:55px;text-align:right">${fmtPct(c.delta)}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 55px 55px 50px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(_truncate(c.nome, 28))}</span>
+      <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${fmtK(c.prev)}</span>
+      <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${fmtK(c.cur)}</span>
+      <span class="${cls}" style="text-align:right;font-size:10px;font-weight:700">${fmtPct(c.delta)}</span>
+    </div>`;
+  }
+
+  function _cliHeader() {
+    return `<div style="display:grid;grid-template-columns:1fr 55px 55px 50px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">
+      <span>Cliente</span>
+      <span style="text-align:right">Anterior</span>
+      <span style="text-align:right">Atual</span>
+      <span style="text-align:right">Delta</span>
     </div>`;
   }
 
@@ -250,16 +261,19 @@ function renderHome() {
   });
 
   const prodDeltas = [];
+  const MIN_PROD = 2000; // filtro mínimo para evitar ruído
   prodCur.forEach((cur, nome) => {
     const prev = prodPrev.get(nome);
     const prevFat = prev ? prev.fat : 0;
-    if (cur.fat < 1000 && prevFat < 1000) return;
+    if (cur.fat < MIN_PROD && prevFat < MIN_PROD) return; // ignora produtos irrelevantes nos dois períodos
     if (prevFat > 0) {
       prodDeltas.push({ nome, cur: cur.fat, prev: prevFat, qtd: cur.qtd, qtdPrev: prev ? prev.qtd : 0, delta: ((cur.fat - prevFat) / prevFat) * 100 });
+    } else if (cur.fat >= MIN_PROD) {
+      prodDeltas.push({ nome, cur: cur.fat, prev: 0, qtd: cur.qtd, qtdPrev: 0, delta: 999 }); // novo produto
     }
   });
   prodPrev.forEach((prev, nome) => {
-    if (!prodCur.has(nome) && prev.fat >= 1000) {
+    if (!prodCur.has(nome) && prev.fat >= MIN_PROD) {
       prodDeltas.push({ nome, cur: 0, prev: prev.fat, qtd: 0, qtdPrev: prev.qtd, delta: -100 });
     }
   });
@@ -271,26 +285,23 @@ function renderHome() {
 
   function _prodRow(p) {
     const cls = p.delta >= 0 ? 'delta-pos' : 'delta-neg';
-    const qtdDelta = p.qtdPrev > 0 ? Math.round(p.qtd - p.qtdPrev) : null;
-    const qtdStr = p.qtd ? `${Math.round(p.qtd)}` : '0';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:11px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 28))}</span>
-      <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;width:35px;text-align:right">${qtdStr}</span>
-      ${qtdDelta !== null ? `<span style="font-size:9px;flex-shrink:0;width:30px;text-align:right;color:${qtdDelta>=0?'var(--green)':'var(--red)'}">${qtdDelta>=0?'+':''}${qtdDelta}</span>` : '<span style="width:30px"></span>'}
-      <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;width:50px;text-align:right;font-family:'DM Mono',monospace">${fmtK(p.prev)}</span>
-      <span style="font-size:10px;flex-shrink:0;width:50px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary)">${fmtK(p.cur)}</span>
-      <span class="${cls}" style="flex-shrink:0;width:50px;text-align:right">${fmtPct(p.delta)}</span>
+    const deltaLabel = p.delta > 900 ? 'Novo' : fmtPct(p.delta);
+    return `<div style="display:grid;grid-template-columns:1fr 40px 55px 55px 50px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 32))}</span>
+      <span style="text-align:right;color:var(--text-muted);font-size:10px">${p.qtd ? Math.round(p.qtd) : '—'}</span>
+      <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${p.prev ? fmtK(p.prev) : '—'}</span>
+      <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${p.cur ? fmtK(p.cur) : 'R$0'}</span>
+      <span class="${cls}" style="text-align:right;font-size:10px;font-weight:700">${deltaLabel}</span>
     </div>`;
   }
 
   function _prodHeader() {
-    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px">
-      <span style="flex:1;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Produto</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:35px;text-align:right">Qtd</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:30px;text-align:right">Dif</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Anterior</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Atual</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Delta</span>
+    return `<div style="display:grid;grid-template-columns:1fr 40px 55px 55px 50px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">
+      <span>Produto</span>
+      <span style="text-align:right">Qtd</span>
+      <span style="text-align:right">Anterior</span>
+      <span style="text-align:right">Atual</span>
+      <span style="text-align:right">Delta</span>
     </div>`;
   }
 
@@ -351,14 +362,14 @@ function renderHome() {
           <div class="scard-title" style="margin-bottom:0">📈 Clientes que mais Cresceram</div>
           ${_sortBtns('cliCresc', sortOptsCli)}
         </div>
-        ${crescCli.length ? crescCli.map(_cliRow).join('') : emptyMsg}
+        ${crescCli.length ? _cliHeader() + crescCli.map(_cliRow).join('') : emptyMsg}
       </div>
       <div class="scard" style="margin-bottom:0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div class="scard-title" style="margin-bottom:0">📉 Clientes que mais Caíram</div>
           ${_sortBtns('cliQueda', sortOptsCli)}
         </div>
-        ${quedaCli.length ? quedaCli.map(_cliRow).join('') : emptyMsg}
+        ${quedaCli.length ? _cliHeader() + quedaCli.map(_cliRow).join('') : emptyMsg}
       </div>
     </div>
 
