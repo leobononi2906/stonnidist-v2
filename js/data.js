@@ -8,7 +8,9 @@ async function init() {
   populateVendFilter();
   // Aplicar filtro automático pelo usuário logado
   await aplicarFiltroUsuario();
-  await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmbler(), loadUmblerVendMap(), loadOverdue(), loadToday(), loadItens(), loadItensPrev(), loadAtividades(), loadContatos()]);
+  await Promise.all([loadDocs(), loadCarteira(), loadProspeccao(), loadUmbler(), loadUmblerVendMap(), loadOverdue(), loadToday()]);
+  // Gestão carrega em background — não bloqueia o CRM
+  refreshGestao().catch(e => console.warn('refreshGestao:', e));
   gotoTab('crm'); // abre direto no CRM
   // Log de sessão iniciada
   logAcao('SESSAO_INICIADA', { detalhe: { hora: new Date().toLocaleString('pt-BR') } });

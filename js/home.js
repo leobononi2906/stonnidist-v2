@@ -272,23 +272,25 @@ function renderHome() {
   function _prodRow(p) {
     const cls = p.delta >= 0 ? 'delta-pos' : 'delta-neg';
     const qtdDelta = p.qtdPrev > 0 ? Math.round(p.qtd - p.qtdPrev) : null;
-    const qtdStr = p.qtd ? `${Math.round(p.qtd)} un` : '';
+    const qtdStr = p.qtd ? `${Math.round(p.qtd)}` : '0';
     return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:11px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 30))}</span>
-      <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;width:45px;text-align:right">${qtdStr}</span>
-      ${qtdDelta !== null ? `<span style="font-size:9px;flex-shrink:0;width:35px;text-align:right;color:${qtdDelta>=0?'var(--green)':'var(--red)'}">${qtdDelta>=0?'+':''}${qtdDelta}</span>` : '<span style="width:35px"></span>'}
-      <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;width:55px;text-align:right;font-family:'DM Mono',monospace">${fmtK(p.cur)}</span>
-      <span class="${cls}" style="flex-shrink:0;width:55px;text-align:right">${fmtPct(p.delta)}</span>
+      <span style="flex:1;font-size:11px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 28))}</span>
+      <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;width:35px;text-align:right">${qtdStr}</span>
+      ${qtdDelta !== null ? `<span style="font-size:9px;flex-shrink:0;width:30px;text-align:right;color:${qtdDelta>=0?'var(--green)':'var(--red)'}">${qtdDelta>=0?'+':''}${qtdDelta}</span>` : '<span style="width:30px"></span>'}
+      <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;width:50px;text-align:right;font-family:'DM Mono',monospace">${fmtK(p.prev)}</span>
+      <span style="font-size:10px;flex-shrink:0;width:50px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary)">${fmtK(p.cur)}</span>
+      <span class="${cls}" style="flex-shrink:0;width:50px;text-align:right">${fmtPct(p.delta)}</span>
     </div>`;
   }
 
   function _prodHeader() {
     return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px">
       <span style="flex:1;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Produto</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:45px;text-align:right">Qtd</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:35px;text-align:right">Dif</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:55px;text-align:right">Valor</span>
-      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:55px;text-align:right">Delta</span>
+      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:35px;text-align:right">Qtd</span>
+      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:30px;text-align:right">Dif</span>
+      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Anterior</span>
+      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Atual</span>
+      <span style="font-size:9px;font-weight:700;color:var(--text-muted);width:50px;text-align:right">Delta</span>
     </div>`;
   }
 
