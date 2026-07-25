@@ -125,6 +125,23 @@ input,select,textarea { width:100%; }
 .data-table .mono { font-family:'DM Mono',monospace; }
 .delta-pos { color:var(--green); font-size:12px; font-weight:600; font-family:'DM Mono',monospace; }
 .delta-neg { color:var(--red); font-size:12px; font-weight:600; font-family:'DM Mono',monospace; }
+
+/* ══ TENDÊNCIA (Home) ══ */
+.trend-section-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
+.trend-section-title { font-size:13px; font-weight:700; color:var(--text-primary); letter-spacing:-0.2px; }
+.panel-cap { font-size:11px; color:var(--text-muted); font-weight:500; }
+.panel-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.scard-up   { border-top:3px solid var(--green); }
+.scard-down { border-top:3px solid var(--red); }
+.trend-pill { display:inline-block; min-width:46px; text-align:center; font-family:'DM Mono',monospace; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; letter-spacing:-0.2px; }
+.trend-up   { background:var(--green-bg);  color:var(--green); }
+.trend-down { background:var(--red-bg);    color:var(--red); }
+.trend-new  { background:var(--blue-pale); color:var(--blue-mid); }
+.churn-foot { margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); }
+.churn-foot-lbl { font-size:11px; font-weight:700; color:var(--orange); margin-bottom:6px; }
+.churn-chips { display:flex; flex-wrap:wrap; gap:4px; }
+.churn-chip { font-size:10px; font-weight:600; color:var(--text-secondary); background:var(--orange-bg); border:1px solid rgba(224,123,0,0.18); padding:2px 7px; border-radius:6px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.churn-more { font-size:10px; font-weight:700; color:var(--text-muted); padding:2px 6px; align-self:center; }
 .expand-inner { background:var(--surface2); padding:14px 16px; border-bottom:1px solid var(--border); }
 .hgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
 .hbox { border-radius:var(--radius-sm); padding:10px; text-align:center; }

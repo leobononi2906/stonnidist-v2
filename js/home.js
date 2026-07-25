@@ -191,58 +191,69 @@ function renderHome() {
     </div>`;
   }).join('') || '<p style="color:var(--text-muted);font-size:12px">Sem dados</p>';
 
-  // ── 5. Crescimento / Queda Clientes ─────────────────────
+  // ── 5/6. Tendência: ÚLTIMOS 30 DIAS vs MÉDIA MENSAL 3 MESES ──
+  // Fonte fixa (independe do filtro de período do topo). Base 3m = total 90d ÷ 3.
+  const it30  = S.itens30d || [];
+  const itB3m = S.itensBase3m || [];
+
+  function _trendPill(delta) {
+    if (delta > 900) return `<span class="trend-pill trend-new">Novo</span>`;
+    const cls = delta >= 0 ? 'trend-up' : 'trend-down';
+    return `<span class="trend-pill ${cls}">${fmtPct(delta)}</span>`;
+  }
+
+  // ── Clientes ── (nome resolvido pelo dimMap; a view de itens só traz id_cliente)
+  const _cliNome = id => (S.dimMap && S.dimMap.get(id)?.nome_cliente) || `Cliente #${id}`;
   const cliCur = new Map();
-  itens.forEach(r => {
+  it30.forEach(r => {
     if (!r.id_cliente) return;
-    if (!cliCur.has(r.id_cliente)) cliCur.set(r.id_cliente, { nome: r.nome_cliente || '', fat: 0 });
-    cliCur.get(r.id_cliente).fat += Number(r.total_item) || 0;
+    cliCur.set(r.id_cliente, (cliCur.get(r.id_cliente) || 0) + (Number(r.total_item) || 0));
   });
-  const cliPrev = new Map();
-  itensPrev.forEach(r => {
+  const cliBase = new Map();
+  itB3m.forEach(r => {
     if (!r.id_cliente) return;
-    if (!cliPrev.has(r.id_cliente)) cliPrev.set(r.id_cliente, { nome: r.nome_cliente || '', fat: 0 });
-    cliPrev.get(r.id_cliente).fat += Number(r.total_item) || 0;
+    cliBase.set(r.id_cliente, (cliBase.get(r.id_cliente) || 0) + (Number(r.total_item) || 0));
   });
 
   const cliDeltas = [];
-  const MIN_CLI = 500; // mínimo para evitar ruído
-  cliCur.forEach((cur, id) => {
-    const prev = cliPrev.get(id);
-    if (prev && prev.fat > MIN_CLI) {
-      cliDeltas.push({ nome: cur.nome, cur: cur.fat, prev: prev.fat, delta: ((cur.fat - prev.fat) / prev.fat) * 100 });
-    }
+  const MIN_CLI = 500; // piso mensal para evitar ruído
+  new Set([...cliCur.keys(), ...cliBase.keys()]).forEach(id => {
+    const cur  = cliCur.get(id) || 0;
+    const media = (cliBase.get(id) || 0) / 3; // média mensal dos 3 meses
+    if (cur < MIN_CLI && media < MIN_CLI) return;
+    const delta = media > 0 ? ((cur - media) / media) * 100 : 999; // sem base = cliente novo
+    cliDeltas.push({ nome: _cliNome(id), cur, prev: media, delta });
   });
 
   const crescCliRaw = [...cliDeltas].filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const quedaCliRaw = [...cliDeltas].filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
+  const quedaCliRaw = [...cliDeltas].filter(c => c.delta < 0 && c.cur > 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
+  const churnCli    = [...cliDeltas].filter(c => c.cur === 0 && c.prev > 0).sort((a, b) => b.prev - a.prev);
   const crescCli = _sortArr(crescCliRaw, 'cliCresc');
   const quedaCli = _sortArr(quedaCliRaw, 'cliQueda');
 
   function _cliRow(c) {
-    const cls = c.delta >= 0 ? 'delta-pos' : 'delta-neg';
-    return `<div style="display:grid;grid-template-columns:1fr 55px 55px 50px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
-      <span style="font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(_truncate(c.nome, 28))}</span>
-      <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${fmtK(c.prev)}</span>
-      <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${fmtK(c.cur)}</span>
-      <span class="${cls}" style="text-align:right;font-size:10px;font-weight:700">${fmtPct(c.delta)}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 58px 58px 54px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(c.nome)}">${escH(_truncate(c.nome, 28))}</span>
+      <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${c.prev ? fmtK(c.prev) : '—'}</span>
+      <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${c.cur ? fmtK(c.cur) : 'R$0'}</span>
+      <span style="text-align:right">${_trendPill(c.delta)}</span>
     </div>`;
   }
 
   function _cliHeader() {
-    return `<div style="display:grid;grid-template-columns:1fr 55px 55px 50px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">
+    return `<div style="display:grid;grid-template-columns:1fr 58px 58px 54px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
       <span>Cliente</span>
-      <span style="text-align:right">Anterior</span>
-      <span style="text-align:right">Atual</span>
-      <span style="text-align:right">Delta</span>
+      <span style="text-align:right">Média 3M</span>
+      <span style="text-align:right">Últ. 30D</span>
+      <span style="text-align:right">Var.</span>
     </div>`;
   }
 
   const sortOptsCli = [{v:'delta',l:'% Delta'},{v:'valor',l:'R$ Valor'}];
 
-  // ── 6. Crescimento / Queda Produtos ─────────────────────
+  // ── Produtos ──
   const prodCur = new Map();
-  itens.forEach(r => {
+  it30.forEach(r => {
     const p = (r.produto || '').trim();
     if (!p) return;
     const e = prodCur.get(p) || { fat: 0, qtd: 0 };
@@ -250,62 +261,71 @@ function renderHome() {
     e.qtd += Number(r.qtd) || 0;
     prodCur.set(p, e);
   });
-  const prodPrev = new Map();
-  itensPrev.forEach(r => {
+  const prodBase = new Map();
+  itB3m.forEach(r => {
     const p = (r.produto || '').trim();
     if (!p) return;
-    const e = prodPrev.get(p) || { fat: 0, qtd: 0 };
+    const e = prodBase.get(p) || { fat: 0, qtd: 0 };
     e.fat += Number(r.total_item) || 0;
     e.qtd += Number(r.qtd) || 0;
-    prodPrev.set(p, e);
+    prodBase.set(p, e);
   });
 
   const prodDeltas = [];
-  const MIN_PROD = 2000; // filtro mínimo para evitar ruído
-  prodCur.forEach((cur, nome) => {
-    const prev = prodPrev.get(nome);
-    const prevFat = prev ? prev.fat : 0;
-    if (cur.fat < MIN_PROD && prevFat < MIN_PROD) return; // ignora produtos irrelevantes nos dois períodos
-    if (prevFat > 0) {
-      prodDeltas.push({ nome, cur: cur.fat, prev: prevFat, qtd: cur.qtd, qtdPrev: prev ? prev.qtd : 0, delta: ((cur.fat - prevFat) / prevFat) * 100 });
-    } else if (cur.fat >= MIN_PROD) {
-      prodDeltas.push({ nome, cur: cur.fat, prev: 0, qtd: cur.qtd, qtdPrev: 0, delta: 999 }); // novo produto
-    }
-  });
-  prodPrev.forEach((prev, nome) => {
-    if (!prodCur.has(nome) && prev.fat >= MIN_PROD) {
-      prodDeltas.push({ nome, cur: 0, prev: prev.fat, qtd: 0, qtdPrev: prev.qtd, delta: -100 });
-    }
+  const MIN_PROD = 2000; // piso mensal para evitar ruído
+  new Set([...prodCur.keys(), ...prodBase.keys()]).forEach(nome => {
+    const cur   = prodCur.get(nome)?.fat || 0;
+    const qtd   = prodCur.get(nome)?.qtd || 0;
+    const media = (prodBase.get(nome)?.fat || 0) / 3; // média mensal
+    const qtdM  = (prodBase.get(nome)?.qtd || 0) / 3;
+    if (cur < MIN_PROD && media < MIN_PROD) return;
+    const delta = media > 0 ? ((cur - media) / media) * 100 : 999; // sem base = produto novo
+    prodDeltas.push({ nome, cur, prev: media, qtd, qtdPrev: qtdM, delta });
   });
 
   const prodCrescRaw = [...prodDeltas].filter(p => p.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const prodQuedaRaw = [...prodDeltas].filter(p => p.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
+  const prodQuedaRaw = [...prodDeltas].filter(p => p.delta < 0 && p.cur > 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
+  const churnProd    = [...prodDeltas].filter(p => p.cur === 0 && p.prev > 0).sort((a, b) => b.prev - a.prev);
   const prodCresc = _sortArr(prodCrescRaw, 'prodCresc');
   const prodQueda = _sortArr(prodQuedaRaw, 'prodQueda');
 
+  // rodapé de churn (zeraram nos últimos 30d, mas vendiam antes)
+  function _churnFoot(arr, label) {
+    if (!arr.length) return '';
+    const top = arr.slice(0, 6).map(x =>
+      `<span class="churn-chip" title="${escH(x.nome)} · média ${fmtK(x.prev)}/mês">${escH(_truncate(x.nome, 22))}</span>`
+    ).join('');
+    const resto = arr.length > 6 ? `<span class="churn-more">+${arr.length - 6}</span>` : '';
+    return `<div class="churn-foot">
+      <div class="churn-foot-lbl">⚠ ${arr.length} ${label} zeraram <span style="font-weight:500;color:var(--text-muted)">(vendiam, sem compra há 30d)</span></div>
+      <div class="churn-chips">${top}${resto}</div>
+    </div>`;
+  }
+
   function _prodRow(p) {
-    const cls = p.delta >= 0 ? 'delta-pos' : 'delta-neg';
-    const deltaLabel = p.delta > 900 ? 'Novo' : fmtPct(p.delta);
-    return `<div style="display:grid;grid-template-columns:1fr 40px 55px 55px 50px;gap:4px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">
-      <span style="font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 32))}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 40px 58px 58px 54px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 30))}</span>
       <span style="text-align:right;color:var(--text-muted);font-size:10px">${p.qtd ? Math.round(p.qtd) : '—'}</span>
       <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${p.prev ? fmtK(p.prev) : '—'}</span>
       <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${p.cur ? fmtK(p.cur) : 'R$0'}</span>
-      <span class="${cls}" style="text-align:right;font-size:10px;font-weight:700">${deltaLabel}</span>
+      <span style="text-align:right">${_trendPill(p.delta)}</span>
     </div>`;
   }
 
   function _prodHeader() {
-    return `<div style="display:grid;grid-template-columns:1fr 40px 55px 55px 50px;gap:4px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase">
+    return `<div style="display:grid;grid-template-columns:1fr 40px 58px 58px 54px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
       <span>Produto</span>
       <span style="text-align:right">Qtd</span>
-      <span style="text-align:right">Anterior</span>
-      <span style="text-align:right">Atual</span>
-      <span style="text-align:right">Delta</span>
+      <span style="text-align:right">Média 3M</span>
+      <span style="text-align:right">Últ. 30D</span>
+      <span style="text-align:right">Var.</span>
     </div>`;
   }
 
   const sortOptsProd = [{v:'delta',l:'% Delta'},{v:'valor',l:'R$ Valor'},{v:'qtd',l:'Qtd'}];
+
+  // legenda explicativa do comparativo
+  const trailCapHTML = `<div class="panel-cap">Últimos 30 dias vs média mensal dos 3 meses anteriores${S.trailAnchor ? ` · base até ${fmtD(S.trailAnchor)}` : ''}</div>`;
 
   const emptyMsg = '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">Sem dados comparativos</p>';
 
@@ -355,39 +375,47 @@ function renderHome() {
       ${topHTML}
     </div>
 
+    <!-- Tendência: Clientes e Produtos (Últimos 30D vs Média 3M) -->
+    <div class="trend-section-head">
+      <span class="trend-section-title">Tendência — Últimos 30 dias</span>
+      ${trailCapHTML}
+    </div>
+
     <!-- Clientes Crescimento / Queda -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-      <div class="scard" style="margin-bottom:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="scard-title" style="margin-bottom:0">📈 Clientes que mais Cresceram</div>
+      <div class="scard scard-up" style="margin-bottom:0">
+        <div class="panel-head">
+          <div class="scard-title" style="margin-bottom:0">📈 Clientes em Alta</div>
           ${_sortBtns('cliCresc', sortOptsCli)}
         </div>
         ${crescCli.length ? _cliHeader() + crescCli.map(_cliRow).join('') : emptyMsg}
       </div>
-      <div class="scard" style="margin-bottom:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="scard-title" style="margin-bottom:0">📉 Clientes que mais Caíram</div>
+      <div class="scard scard-down" style="margin-bottom:0">
+        <div class="panel-head">
+          <div class="scard-title" style="margin-bottom:0">📉 Clientes em Queda</div>
           ${_sortBtns('cliQueda', sortOptsCli)}
         </div>
         ${quedaCli.length ? _cliHeader() + quedaCli.map(_cliRow).join('') : emptyMsg}
+        ${_churnFoot(churnCli, 'clientes')}
       </div>
     </div>
 
     <!-- Produtos Crescimento / Queda -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-      <div class="scard" style="margin-bottom:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="scard-title" style="margin-bottom:0">📈 Produtos que mais Cresceram</div>
+      <div class="scard scard-up" style="margin-bottom:0">
+        <div class="panel-head">
+          <div class="scard-title" style="margin-bottom:0">📈 Produtos em Alta</div>
           ${_sortBtns('prodCresc', sortOptsProd)}
         </div>
         ${prodCresc.length ? _prodHeader() + prodCresc.map(_prodRow).join('') : emptyMsg}
       </div>
-      <div class="scard" style="margin-bottom:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="scard-title" style="margin-bottom:0">📉 Produtos que mais Caíram</div>
+      <div class="scard scard-down" style="margin-bottom:0">
+        <div class="panel-head">
+          <div class="scard-title" style="margin-bottom:0">📉 Produtos em Queda</div>
           ${_sortBtns('prodQueda', sortOptsProd)}
         </div>
         ${prodQueda.length ? _prodHeader() + prodQueda.map(_prodRow).join('') : emptyMsg}
+        ${_churnFoot(churnProd, 'produtos')}
       </div>
     </div>
 

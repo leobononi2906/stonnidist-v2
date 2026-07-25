@@ -129,7 +129,7 @@ async function loadVendedores() {
   });
 }
 async function loadDimMap() {
-  const d=await sbQ('atac_clientes','select=id_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
+  const d=await sbQ('atac_clientes','select=id_cliente,nome_cliente,cnpj_cpf,cidade,uf,telefone1,email&situacao=eq.A');
   S.dimMap=new Map();(Array.isArray(d)?d:[]).forEach(r=>S.dimMap.set(r.id_cliente,r));
 }
 // CPF filtrado na view atac_crm_clientes via campo nao_comercial — sem necessidade de lista no frontend
@@ -531,7 +531,40 @@ async function loadContatos() {
   S.contatosUmbler=Array.isArray(d)?d:[];
 }
 
+// Análise de tendência para a Home: ÚLTIMOS 30 DIAS vs MÉDIA MENSAL DOS 3 MESES ANTERIORES.
+// Ancorado na última data faturada (evita o falso "-100%" de mês incompleto).
+// Independente do filtro de período do topo; respeita vendedor/empresa.
+async function loadTrailing() {
+  const p=n=>String(n).padStart(2,'0');
+  const fmtDt=dt=>`${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`;
+  const DAY=86400000;
+  // 1. última nota faturada = âncora da janela
+  const last=await sbQ('vw_comercial_itens_faturados','select=data_faturamento&tipo_saida=eq.DISTRIBUICAO&order=data_faturamento.desc&limit=1');
+  const anchor=(Array.isArray(last)&&last[0]&&last[0].data_faturamento)
+    ? new Date(last[0].data_faturamento+'T12:00:00') : new Date();
+  // 2. janelas (30 dias atuais; 90 dias anteriores = 3 meses, sem sobreposição)
+  const curEnd=anchor;
+  const curStart=new Date(anchor.getTime()-29*DAY);
+  const baseEnd=new Date(curStart.getTime()-DAY);
+  const baseStart=new Date(baseEnd.getTime()-89*DAY);
+  S.trailAnchor=fmtDt(anchor);
+  S.trailCur=[fmtDt(curStart),fmtDt(curEnd)];
+  S.trailBase=[fmtDt(baseStart),fmtDt(baseEnd)];
+  // 3. filtros opcionais
+  let f='';
+  if(F.vendedorId) f+=`&id_vendedor=eq.${F.vendedorId}`;
+  if(F.empresaId)  f+=`&id_empresa=eq.${F.empresaId}`;
+  const sel='select=id_cliente,id_produto,produto,grupo,subgrupo,qtd,total_item,data_faturamento';
+  const base='tipo_saida=eq.DISTRIBUICAO';
+  const [cur,bse]=await Promise.all([
+    sbQ('vw_comercial_itens_faturados',`${sel}&${base}&data_faturamento=gte.${fmtDt(curStart)}&data_faturamento=lte.${fmtDt(curEnd)}${f}`),
+    sbQ('vw_comercial_itens_faturados',`${sel}&${base}&data_faturamento=gte.${fmtDt(baseStart)}&data_faturamento=lte.${fmtDt(baseEnd)}${f}`)
+  ]);
+  S.itens30d=Array.isArray(cur)?cur:[];
+  S.itensBase3m=Array.isArray(bse)?bse:[]; // total de 90 dias; dividir por 3 no render p/ média mensal
+}
+
 // Refresh completo para Home e Vendedores (chamado por refreshDocs)
 async function refreshGestao() {
-  await Promise.all([loadItens(), loadItensPrev(), loadAtividades(), loadContatos()]);
+  await Promise.all([loadItens(), loadItensPrev(), loadTrailing(), loadAtividades(), loadContatos()]);
 }
