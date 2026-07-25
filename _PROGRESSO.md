@@ -15,7 +15,7 @@ Eram **2 bugs**, não falta de dado:
 
 Correções:
 - `js/data.js`: novo `loadTrailing()` → **Últimos 30D vs média mensal 3M**, ancorado na última nota (`S.itens30d` / `S.itensBase3m`). `loadDimMap` agora traz `nome_cliente`.
-- `js/home.js`: painéis cliente/produto reescritos; nome via `S.dimMap`; **churn** (quem zerou, cur=0) separado num rodapé; quedas parciais (cur>0) na tabela; pills de variação; labels "Média 3M / Últ. 30D".
+- `js/home.js`: painéis cliente/produto reescritos; nome via `S.dimMap`; quedas ficam **todas na mesma tabela** (quem zerou aparece com Últ.30D = R$0 / -100%, decisão do Leo — sem rodapé separado); pills de variação; labels "Média 3M / Últ. 30D".
 - `css/styles.css`: `.trend-pill`, `.scard-up/.scard-down`, `.churn-foot` e afins.
 
 ## ⏳ Próximos passos

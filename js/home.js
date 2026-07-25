@@ -226,8 +226,7 @@ function renderHome() {
   });
 
   const crescCliRaw = [...cliDeltas].filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const quedaCliRaw = [...cliDeltas].filter(c => c.delta < 0 && c.cur > 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
-  const churnCli    = [...cliDeltas].filter(c => c.cur === 0 && c.prev > 0).sort((a, b) => b.prev - a.prev);
+  const quedaCliRaw = [...cliDeltas].filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
   const crescCli = _sortArr(crescCliRaw, 'cliCresc');
   const quedaCli = _sortArr(quedaCliRaw, 'cliQueda');
 
@@ -284,23 +283,9 @@ function renderHome() {
   });
 
   const prodCrescRaw = [...prodDeltas].filter(p => p.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const prodQuedaRaw = [...prodDeltas].filter(p => p.delta < 0 && p.cur > 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
-  const churnProd    = [...prodDeltas].filter(p => p.cur === 0 && p.prev > 0).sort((a, b) => b.prev - a.prev);
+  const prodQuedaRaw = [...prodDeltas].filter(p => p.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
   const prodCresc = _sortArr(prodCrescRaw, 'prodCresc');
   const prodQueda = _sortArr(prodQuedaRaw, 'prodQueda');
-
-  // rodapé de churn (zeraram nos últimos 30d, mas vendiam antes)
-  function _churnFoot(arr, label) {
-    if (!arr.length) return '';
-    const top = arr.slice(0, 6).map(x =>
-      `<span class="churn-chip" title="${escH(x.nome)} · média ${fmtK(x.prev)}/mês">${escH(_truncate(x.nome, 22))}</span>`
-    ).join('');
-    const resto = arr.length > 6 ? `<span class="churn-more">+${arr.length - 6}</span>` : '';
-    return `<div class="churn-foot">
-      <div class="churn-foot-lbl">⚠ ${arr.length} ${label} zeraram <span style="font-weight:500;color:var(--text-muted)">(vendiam, sem compra há 30d)</span></div>
-      <div class="churn-chips">${top}${resto}</div>
-    </div>`;
-  }
 
   function _prodRow(p) {
     return `<div style="display:grid;grid-template-columns:1fr 40px 58px 58px 54px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
@@ -396,7 +381,6 @@ function renderHome() {
           ${_sortBtns('cliQueda', sortOptsCli)}
         </div>
         ${quedaCli.length ? _cliHeader() + quedaCli.map(_cliRow).join('') : emptyMsg}
-        ${_churnFoot(churnCli, 'clientes')}
       </div>
     </div>
 
@@ -415,7 +399,6 @@ function renderHome() {
           ${_sortBtns('prodQueda', sortOptsProd)}
         </div>
         ${prodQueda.length ? _prodHeader() + prodQueda.map(_prodRow).join('') : emptyMsg}
-        ${_churnFoot(churnProd, 'produtos')}
       </div>
     </div>
 
