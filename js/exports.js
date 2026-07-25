@@ -106,3 +106,4 @@ window.loadItensPrev=loadItensPrev;
 window.loadAtividades=loadAtividades;
 window.loadContatos=loadContatos;
 window.fmtPct=fmtPct;
+window.setHomeSort=setHomeSort;

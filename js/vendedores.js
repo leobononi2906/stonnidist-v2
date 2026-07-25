@@ -247,6 +247,9 @@ function renderVendedorIndividual(el) {
       </div>
     </div>
 
+    <!-- Atividade Diária / Semanal -->
+    ${_renderAtividadeDiaria(myAtividades, S.contatosUmbler || [], umblerUser)}
+
     <!-- Faturamento por Linha -->
     <div class="scard">
       <div class="scard-title">\u{1F4CA} Faturamento por Linha</div>
@@ -303,6 +306,104 @@ function renderVendedorIndividual(el) {
       </div>
     </div>` : ''}
   `;
+}
+
+// ── Atividade Diária / Semanal ────────────────────────────
+function _renderAtividadeDiaria(atividades, contatosUmbler, umblerUser) {
+  // Agrupar atividades CRM por dia
+  const porDia = new Map();
+  atividades.forEach(a => {
+    const dia = (a.data_criacao || '').substring(0, 10);
+    if (!dia) return;
+    if (!porDia.has(dia)) porDia.set(dia, { notas: 0, tarefas: 0, followups: 0, ligacoes: 0, resolvidas: 0, clientes: new Set() });
+    const d = porDia.get(dia);
+    d.notas++;
+    if (a.tipo === 'TAREFA') d.tarefas++;
+    if (a.tipo === 'FOLLOWUP') d.followups++;
+    if (a.tipo === 'LIGACAO') d.ligacoes++;
+    if (a.resolvido) d.resolvidas++;
+    if (a.id_cliente) d.clientes.add(a.id_cliente);
+  });
+
+  // Agrupar contatos Umbler por dia
+  const umblerPorDia = new Map();
+  if (umblerUser) {
+    contatosUmbler.filter(c => c.nome_atendente === umblerUser).forEach(c => {
+      const dia = (c.ultimo_contato || '').substring(0, 10);
+      if (!dia) return;
+      umblerPorDia.set(dia, (umblerPorDia.get(dia) || 0) + 1);
+    });
+  }
+
+  // Unificar dias e ordenar desc
+  const todosDias = new Set([...porDia.keys(), ...umblerPorDia.keys()]);
+  const diasArr = [...todosDias].sort((a, b) => b.localeCompare(a));
+
+  if (!diasArr.length) return '';
+
+  // Agrupar por semana (ISO week)
+  function _getWeek(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    const oneJan = new Date(d.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((d - oneJan) / 86400000 + oneJan.getDay() + 1) / 7);
+    return `${d.getFullYear()}-S${String(weekNum).padStart(2, '0')}`;
+  }
+
+  const porSemana = new Map();
+  diasArr.forEach(dia => {
+    const sem = _getWeek(dia);
+    if (!porSemana.has(sem)) porSemana.set(sem, { notas: 0, resolvidas: 0, umbler: 0, clientes: new Set(), dias: 0 });
+    const s = porSemana.get(sem);
+    const dd = porDia.get(dia);
+    if (dd) { s.notas += dd.notas; s.resolvidas += dd.resolvidas; dd.clientes.forEach(c => s.clientes.add(c)); }
+    s.umbler += (umblerPorDia.get(dia) || 0);
+    s.dias++;
+  });
+
+  const semanasArr = [...porSemana.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  const maxNotas = Math.max(...diasArr.map(d => (porDia.get(d)?.notas || 0) + (umblerPorDia.get(d) || 0)), 1);
+
+  // Tabela diária (últimos 14 dias)
+  const dias14 = diasArr.slice(0, 14);
+  const tabelaDia = dias14.map(dia => {
+    const dd = porDia.get(dia) || { notas: 0, tarefas: 0, followups: 0, ligacoes: 0, resolvidas: 0, clientes: new Set() };
+    const umb = umblerPorDia.get(dia) || 0;
+    const total = dd.notas + umb;
+    const barW = Math.round((total / maxNotas) * 100);
+    const dtLabel = new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--text-muted);width:80px;flex-shrink:0">${dtLabel}</span>
+      <div class="bar-track" style="flex:1;height:10px"><div class="bar-fill" style="width:${barW}%;background:var(--blue-mid)"></div></div>
+      <span style="font-size:10px;color:var(--text-secondary);width:25px;text-align:right;font-weight:700">${total}</span>
+      <span style="font-size:9px;color:var(--text-muted);width:80px;flex-shrink:0;text-align:right">${dd.tarefas?dd.tarefas+'T ':''}${dd.followups?dd.followups+'F ':''}${dd.ligacoes?dd.ligacoes+'L ':''}${umb?umb+'U':''}</span>
+      <span style="font-size:9px;color:var(--green);width:35px;flex-shrink:0;text-align:right">${dd.clientes.size?dd.clientes.size+' cli':''}</span>
+    </div>`;
+  }).join('');
+
+  // Resumo semanal
+  const tabelaSem = semanasArr.slice(0, 8).map(([sem, s]) => {
+    const mediaDia = s.dias ? (s.notas / s.dias).toFixed(1) : '0';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;font-weight:600;color:var(--text-primary);width:60px;flex-shrink:0">${sem}</span>
+      <span style="font-size:10px;color:var(--text-muted);width:35px;text-align:right">${s.notas} reg</span>
+      <span style="font-size:10px;color:var(--green);width:35px;text-align:right">${s.resolvidas} \u2713</span>
+      <span style="font-size:10px;color:var(--purple);width:35px;text-align:right">${s.umbler} umb</span>
+      <span style="font-size:10px;color:var(--text-secondary);width:35px;text-align:right">${s.clientes.size} cli</span>
+      <span style="font-size:10px;color:var(--text-muted);width:50px;text-align:right">${mediaDia}/dia</span>
+    </div>`;
+  }).join('');
+
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="scard" style="margin-bottom:0">
+      <div class="scard-title">\u{1F4C5} Atividade Di\u00e1ria (\u00falt. 14 dias)</div>
+      <div style="font-size:9px;color:var(--text-muted);margin-bottom:6px">T=Tarefa F=Follow-up L=Liga\u00e7\u00e3o U=Umbler</div>
+      ${tabelaDia || '<div class="empty-msg">Sem atividade no per\u00edodo</div>'}
+    </div>
+    <div class="scard" style="margin-bottom:0">
+      <div class="scard-title">\u{1F4CA} Resumo Semanal</div>
+      ${tabelaSem || '<div class="empty-msg">Sem dados</div>'}
+    </div>
+  </div>`;
 }
 
 function toggleVend(id) {
