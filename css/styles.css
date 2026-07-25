@@ -137,6 +137,23 @@ input,select,textarea { width:100%; }
 .trend-up   { background:var(--green-bg);  color:var(--green); }
 .trend-down { background:var(--red-bg);    color:var(--red); }
 .trend-new  { background:var(--blue-pale); color:var(--blue-mid); }
+
+/* ══ ABA LINHAS ══ */
+.lin-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:16px; }
+.lin-chip { padding:5px 12px; font-size:12px; font-weight:600; border-radius:999px; border:1.5px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; transition:all .15s; }
+.lin-chip:hover { border-color:var(--blue-mid); color:var(--blue-mid); }
+.lin-chip.on { background:var(--blue-dark); border-color:var(--blue-dark); color:#fff; }
+.lin-select { height:32px; border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:0 8px; font-size:12px; font-weight:500; color:var(--text-primary); background:var(--surface2); cursor:pointer; outline:none; width:auto; }
+.lin-select:focus { border-color:var(--blue-mid); }
+.lin-sep { width:1px; height:22px; background:var(--border); margin:0 2px; }
+.lin-cap { font-size:11px; color:var(--text-muted); font-weight:500; margin-bottom:8px; }
+.lin-trow { display:grid; grid-template-columns:1fr 44px 64px 64px 56px; gap:8px; align-items:center; padding:7px 0; border-bottom:1px solid var(--border); font-size:12px; }
+.lin-thead { border-bottom:2px solid var(--border); margin-bottom:2px; font-size:9px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; padding:4px 0; }
+#pg-linhas .nm { font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#pg-linhas .r { text-align:right; }
+#pg-linhas .mut { color:var(--text-muted); font-size:10px; }
+#pg-linhas .mono { font-family:'DM Mono',monospace; }
+#pg-linhas .cur { font-family:'DM Mono',monospace; font-weight:600; color:var(--text-primary); font-size:11px; }
 .expand-inner { background:var(--surface2); padding:14px 16px; border-bottom:1px solid var(--border); }
 .hgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
 .hbox { border-radius:var(--radius-sm); padding:10px; text-align:center; }

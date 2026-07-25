@@ -21,11 +21,11 @@ function gotoTab(tab) {
   S.tab=tab;
   if(window.setPageInfo) window.setPageInfo(tab);
   // sidebar active
-  ['home','vendedores','crm','prospeccao','agenda','config'].forEach(t=>{
+  ['home','vendedores','linhas','crm','prospeccao','agenda','config'].forEach(t=>{
     document.getElementById(`si-${t}`)?.classList.toggle('active',t===tab);
   });
-  // páginas: pg-home, pg-vendedores, pg-crm (usa pg-crm.active), pg-config
-  ['home','vendedores','config','agenda'].forEach(t=>{
+  // páginas: pg-home, pg-vendedores, pg-linhas, pg-crm (usa pg-crm.active), pg-config
+  ['home','vendedores','linhas','config','agenda'].forEach(t=>{
     const el=document.getElementById(`pg-${t}`);
     if(el){ el.classList.toggle('active',t===tab); }
   });
@@ -72,6 +72,10 @@ function gotoTab(tab) {
       if(tab==='home')renderHome();
       if(tab==='vendedores')renderVendedores();
     }
+  }
+  if(tab==='linhas'){
+    if(!S.linhas.length) loadLinhas().then(()=>{ if(window.renderLinhas) renderLinhas(); });
+    else if(window.renderLinhas) renderLinhas();
   }
   if(tab==='crm')renderCRM();
   if(tab==='config')renderConfig();

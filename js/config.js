@@ -54,6 +54,12 @@ const S = {
   itensPrev: [],      // mesma view, período anterior (para comparativo)
   atividades: [],     // atac_crm_notas no período
   contatosUmbler: [], // atac_umbler_contatos no período
+  // ── LINHAS (análise por grupo/subgrupo ao longo do tempo) ──
+  linhas: [],         // vw_comercial_itens_faturados dos últimos 12 meses
+  linhaGrupo: '',     // grupo selecionado ('' = todos)
+  linhaSubgrupo: '',  // subgrupo selecionado ('' = todos)
+  linhaJanela: 12,    // meses exibidos na série (6 | 12)
+  linhaSort: 'delta', // ordenação da tabela de produtos
 };
 
 // ── FORMATADORES ───────────────────────────────────────────

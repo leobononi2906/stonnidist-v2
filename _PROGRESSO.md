@@ -18,10 +18,18 @@ Correções:
 - `js/home.js`: painéis cliente/produto reescritos; nome via `S.dimMap`; quedas ficam **todas na mesma tabela** (quem zerou aparece com Últ.30D = R$0 / -100%, decisão do Leo — sem rodapé separado); pills de variação; labels "Média 3M / Últ. 30D".
 - `css/styles.css`: `.trend-pill`, `.scard-up/.scard-down`, `.churn-foot` e afins.
 
+### Aba nova "Linhas" 📊 (jul/2026)
+Análise de grupo/subgrupo ao longo do tempo. Arquivo `js/linhas.js` (isolado).
+- `data.js`: `loadLinhas()` busca 12 meses de itens numa query só (`S.linhas`). Wired em `refreshDocs` e `gotoTab`.
+- `config.js`: estado `linhaGrupo / linhaSubgrupo / linhaJanela / linhaSort`.
+- `ui.js gotoTab`: 'linhas' registrado na sidebar/páginas + carga sob demanda.
+- `index.html`: nav `si-linhas`, página `pg-linhas`, PAGINAS, `<script src="js/linhas.js">`.
+- Tela: chips de Grupo (só participação ≥0,5%) → select Subgrupo → toggle série 6M/12M; 4 KPIs (Últ.30D, Média 3M, Variação, Qtd); gráfico SVG de barras (mês corrente parcial em azul claro); quebra por subgrupo; tabela de produtos ordenável. Mesmo comparativo da Home (30D vs média 3M).
+
 ## ⏳ Próximos passos
-1. **Aba nova "Linhas/Produtos"**: filtro cascata Grupo→Subgrupo + série temporal mensal (6/12m) + comparativo Média3M vs Últ.30D por grupo/subgrupo. Obs: `subgrupo` já vem da view `vw_comercial_itens_faturados`, só falta a tela. Usar `dataviz` para os gráficos.
-2. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
-3. Decidir se "Faturamento por Linha" também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
+1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
+2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
+3. Possível: exportar a análise de Linhas (CSV) e/ou clicar num produto pra ver detalhe.
 
 ## Decisões fixadas
 - Padrão de comparativo de tendência = **Últimos 30 dias vs média mensal dos 3 meses anteriores**, ancorado na última data faturada.

@@ -60,6 +60,9 @@
       <div class="nav-item" id="si-vendedores" onclick="gotoTab('vendedores')">
         <span class="nav-icon">👤</span> Vendedores
       </div>
+      <div class="nav-item" id="si-linhas" onclick="gotoTab('linhas')">
+        <span class="nav-icon">📊</span> Linhas
+      </div>
       <div class="nav-separator"></div>
       <div class="nav-section-label">Operacional</div>
       <div class="nav-item active" id="si-crm" onclick="gotoTab('crm')">
@@ -143,6 +146,11 @@
 
       <!-- VENDEDORES -->
       <div id="pg-vendedores" class="pg"><div id="vend-body">
+        <div class="empty-msg"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>
+      </div></div>
+
+      <!-- LINHAS -->
+      <div id="pg-linhas" class="pg"><div id="linhas-body">
         <div class="empty-msg"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>
       </div></div>
 
@@ -478,6 +486,7 @@ window.sb = sb;
 const PAGINAS = {
   home:       { title:'Home',          breadcrumb:'Stonni Atacado · Home' },
   vendedores: { title:'Vendedores',    breadcrumb:'Stonni Atacado · Vendedores' },
+  linhas:     { title:'Linhas',        breadcrumb:'Stonni Atacado · Linhas de Produto' },
   crm:        { title:'CRM',           breadcrumb:'Stonni Atacado · CRM · Carteira' },
   prospeccao: { title:'Prospecção',   breadcrumb:'Stonni Atacado · Prospecção · balcão de garimpo' },
   config:     { title:'Configurações', breadcrumb:'Stonni Atacado · Configurações' },
@@ -576,6 +585,7 @@ window.hideLoading = hideLoading;
 <script src="js/ui.js?v=20260724"></script>
 <script src="js/data.js?v=20260724"></script>
 <script src="js/home.js?v=20260724"></script>
+<script src="js/linhas.js?v=20260725"></script>
 <script src="js/vendedores.js?v=20260724"></script>
 <script src="js/crm.js?v=20260724"></script>
 <script src="js/drawer.js?v=20260724"></script>

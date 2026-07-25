@@ -95,6 +95,7 @@ function onEmpChange(v) {
   refreshDocs();
 }
 async function refreshDocs() {
+  if(S.tab==='linhas'){ await loadLinhas(); if(window.renderLinhas) renderLinhas(); return; }
   await loadDocs();
   if(S.tab==='home'||S.tab==='vendedores') await refreshGestao();
   if(S.tab==='home')renderHome();
@@ -562,6 +563,21 @@ async function loadTrailing() {
   ]);
   S.itens30d=Array.isArray(cur)?cur:[];
   S.itensBase3m=Array.isArray(bse)?bse:[]; // total de 90 dias; dividir por 3 no render p/ média mensal
+}
+
+// Itens dos últimos 12 meses para a aba Linhas (grupo/subgrupo ao longo do tempo).
+// Uma query só alimenta série mensal + comparativo 30d/3m (recortado por data no cliente).
+async function loadLinhas() {
+  const p=n=>String(n).padStart(2,'0');
+  const now=new Date();
+  const start=new Date(now.getFullYear(), now.getMonth()-11, 1); // início de 12 meses atrás
+  const s=`${start.getFullYear()}-${p(start.getMonth()+1)}-01`;
+  let f='';
+  if(F.vendedorId) f+=`&id_vendedor=eq.${F.vendedorId}`;
+  if(F.empresaId)  f+=`&id_empresa=eq.${F.empresaId}`;
+  const sel='select=id_grupo,grupo,id_subgrupo,subgrupo,produto,qtd,total_item,data_faturamento';
+  const d=await sbQ('vw_comercial_itens_faturados',`${sel}&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${s}${f}&order=data_faturamento.asc`);
+  S.linhas=Array.isArray(d)?d:[];
 }
 
 // Refresh completo para Home e Vendedores (chamado por refreshDocs)
