@@ -29,6 +29,11 @@ Análise de grupo/subgrupo ao longo do tempo. Arquivo `js/linhas.js` (isolado).
 - `index.html`: nav `si-linhas`, página `pg-linhas`, PAGINAS, `<script src="js/linhas.js">`.
 - Tela: chips de Grupo (só participação ≥0,5%) → select Subgrupo → toggle série 6M/12M; 4 KPIs (Últ.30D, Média 3M, Variação, Qtd); gráfico SVG de barras (mês corrente parcial em azul claro); quebra por subgrupo; tabela de produtos ordenável. Mesmo comparativo da Home (30D vs média 3M).
 
+### Ajustes pós-produção (jul/2026)
+- **Aba "Linhas" renomeada para "Produtos"** (nav + breadcrumb; id interno segue `linhas`).
+- **Aba Produtos agora é GLOBAL**: `loadLinhas` ignora os filtros master (período/vendedor/empresa) e o filtro master fica **escondido** na aba (ui.js gotoTab). Motivo: no login, `aplicarFiltroUsuario` (data.js:50) auto-seta `F.vendedorId`, e isso zerava a aba → subfiltros (6M/grupo) pareciam mortos. A aba tem os próprios subfiltros. `APP.refresh` também recarrega a aba.
+- **Bug gráfico "Faturamento por Linha" (Vendedores)**: `total_item` vem como **string** do Supabase; `vendedores.js` somava sem `Number()` → concatenava texto → barra com largura `NaN` → gráfico vazio. Corrigido com `Number(it.total_item)||0` (linhas do grupoMap e do fat prévio). **Regra:** todo `total_item`/`qtd`/numérico do Supabase precisa de `Number(...)` antes de somar.
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
