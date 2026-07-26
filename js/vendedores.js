@@ -113,6 +113,37 @@ async function renderVendedorTeam(el) {
   };
   const totParadaFat = _sumParada, totParadaCli = _cntParadaCli;
 
+  // Ritmo de atividade por semana (dentro do período): nota + Umbler
+  const _ms = 86400000;
+  const _wStart = new Date(F.dtStart + 'T00:00:00');
+  const _wEnd = new Date(F.dtEnd + 'T00:00:00');
+  const nWeeks = Math.min(12, Math.max(1, Math.ceil(((_wEnd - _wStart) / _ms + 1) / 7)));
+  const _wIdx = ds => {
+    if (!ds) return -1;
+    const d = new Date(String(ds).slice(0, 10) + 'T00:00:00');
+    const idx = Math.floor((d - _wStart) / _ms / 7);
+    return (idx >= 0 && idx < nWeeks) ? idx : -1;
+  };
+  const ritmo = new Map(); // vid -> number[nWeeks]
+  const _addRitmo = (vid, ds) => {
+    if (!vid) return; const wi = _wIdx(ds); if (wi < 0) return;
+    if (!ritmo.has(vid)) ritmo.set(vid, new Array(nWeeks).fill(0));
+    ritmo.get(vid)[wi]++;
+  };
+  (S.atividades || []).forEach(a => _addRitmo(a.id_vendedor_responsavel, a.data_criacao));
+  // Umbler: nome_atendente do contato = nome_vendedor_erp (nome), NÃO usuario_umbler (login)
+  const _atMap = new Map();
+  (S.umblerVendMap || []).forEach(m => { if (m.nome_vendedor_erp) _atMap.set(String(m.nome_vendedor_erp).toUpperCase(), m.id_vendedor_erp); });
+  (S.contatosUmbler || []).forEach(c => { const vid = c.nome_atendente ? _atMap.get(String(c.nome_atendente).toUpperCase()) : null; if (vid) _addRitmo(vid, c.ultimo_contato); });
+  const ritmoMax = Math.max(1, ...[...ritmo.values()].flatMap(a => a));
+  const _sparkline = vid => {
+    const arr = ritmo.get(vid) || new Array(nWeeks).fill(0);
+    return `<div style="display:inline-flex;align-items:flex-end;gap:2px;height:26px" title="Atividades por semana (nota + Umbler)">${arr.map((v, k) => {
+      const h = v ? Math.max(3, Math.round(v / ritmoMax * 24)) : 1;
+      return `<div style="width:6px;height:${h}px;background:${v ? 'var(--blue-mid)' : 'var(--border)'};border-radius:1px" title="Sem ${k + 1}: ${v}"></div>`;
+    }).join('')}</div>`;
+  };
+
   el.innerHTML = `
     <div class="kgrid">
       ${kc('\u{1F4B0}', 'Faturamento', fmtK(fatTot), 'kc-b')}
@@ -144,6 +175,7 @@ async function renderVendedorTeam(el) {
           <th class="r" title="% da carteira que ele tocou (nota ou Umbler)">Cobertura</th>
           <th class="r" title="N\u00ba de clientes da carteira atendidos no per\u00edodo (nota ou Umbler)">Falados</th>
           <th class="r" title="Clientes SEM compra que ele atendeu \u2014 prospec\u00e7\u00e3o pura (trabalho, n\u00e3o colheita)">Prospec\u00e7\u00e3o</th>
+          <th class="r" title="Atividades por semana no per\u00edodo (nota + Umbler) \u2014 constante vs em rajada">Ritmo</th>
           <th class="r" title="% das vendas geradas por contato (n\u00e3o passivas)">Venda ativa</th>
           <th class="r" title="Faturamento hist\u00f3rico da carteira sem contato nem compra no per\u00edodo">Parada</th>
           <th class="r">Ticket M\u00e9dio</th>
@@ -157,6 +189,7 @@ async function renderVendedorTeam(el) {
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.cob}%</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.falados)}</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.prospec)}</td>
+            <td class="r" style="font-size:10px;color:var(--text-muted);text-align:right">${nWeeks} sem</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.parada)}</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.ticket)}</td>
@@ -189,12 +222,13 @@ async function renderVendedorTeam(el) {
               <td class="r mono" style="color:${_relColor(cob, avg.cob, true)};font-weight:700">${cob}%</td>
               <td class="r mono" style="color:${_relColor(falados, avg.falados, true)};font-weight:600">${falados}</td>
               <td class="r mono" style="color:${_relColor(prospec, avg.prospec, true)};font-weight:700">${prospec}</td>
+              <td class="r">${_sparkline(v.id)}</td>
               <td class="r mono" style="color:${compV?_relColor(pAtiva, avg.ativa, true):'var(--text-muted)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
               <td class="r mono" style="color:${e.fatParada>0?_relColor(e.fatParada, avg.parada, false):'var(--text-muted)'};font-weight:600">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
               <td class="r mono" style="color:${_relColor(v.ticket, avg.ticket, true)}">${fmtK(v.ticket)}</td>
               <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat / maxF * 100)}%"></div></div></td>
             </tr>
-            ${exp ? `<tr class="expand-row"><td colspan="10"><div class="expand-inner">
+            ${exp ? `<tr class="expand-row"><td colspan="11"><div class="expand-inner">
               <div class="hgrid">
                 <div class="hbox ha"><div class="n">${h.a}</div><div class="l">Ativos</div></div>
                 <div class="hbox ht"><div class="n">${h.t}</div><div class="l">Aten\u00e7\u00e3o</div></div>
