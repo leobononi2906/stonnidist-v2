@@ -41,6 +41,11 @@ Objetivo: medir se o vendedor **trabalha** a carteira ou só **colhe** venda gar
 - **Ranking de equipe** (`renderVendedorTeam`): novas colunas Cobertura % / Venda ativa % / Carteira parada (R$). Substituiu a coluna "% Equipe" (a barra já mostra o share). Computado em `esforco` (Map por vendedor).
 - **Regra chave**: "falou" nunca inclui a venda. Comprou = pedido no período (`myDocs`/`S.docs`).
 
+### Card vs cliente + Régua da equipe + drill (jul/2026, commit 226eef1, v=20260726d)
+- **A operação trata CARD, não cliente** (`atac_card_membro`: um card agrupa 2-3 cadastros duplicados do ERP). Antes, compra/atividade que caía no cadastro IRMÃO fazia o dono parecer "carteira parada". Ex. real: ZATTAR (dono 77428) parecia parado, mas o irmão 70269 comprou R$317k. `data.js`: `loadCardMap()` (carrega `atac_card_membro` 1x na init) + helper global `cardIds(id)` (todos os ids do card). `vendedores.js`: classificação de carteira (team `esforco` + matriz individual `_comprou`/`_falou`) agora usa `cardIds(...).some(...)`. Contagem de clientes dedupada por card (`_cardKey`). **Regra:** ver memória `crm-atacado-card-vs-cliente`.
+- **Régua da Equipe** (modo Todos): card de resumo com médias do time (cobertura, venda ativa, parada total, ticket) + linha "📏 Média da equipe" no topo do ranking; células de cobertura/venda ativa/parada/ticket coloridas por `_relColor` (verde acima da média, vermelho abaixo, neutro perto ±8%).
+- **Drill por clique**: clicar na linha do ranking abre o painel individual (`S.vendDrill` + `openVend`/`voltarTime`, botão "‹ Voltar pro ranking"). Filtro do topo continua para login do vendedor. `S.vendDrill` reseta ao entrar na aba (ui.js) e ao trocar o filtro do topo (onVendChange). Usa dados globais já carregados → clique instantâneo. Bloco de expand antigo (`toggleVend`/`S.expandVend`) virou código morto inofensivo.
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
