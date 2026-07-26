@@ -3,15 +3,33 @@
 // ABA VENDEDORES — Ranking de Equipe + Painel Individual
 // ══════════════════════════════════════════════════════════
 
+// Chave de contagem por CARD (irmãos do mesmo card contam como 1 cliente)
+function _cardKey(id) { const c = S.cardOf && S.cardOf.get(id); return c != null ? 'k' + c : 'c' + id; }
+
 async function renderVendedores() {
   const el = document.getElementById('vend-body');
   if (!el) return;
 
   if (F.vendedorId) {
-    renderVendedorIndividual(el);
+    renderVendedorIndividual(el);            // login do vendedor: entra travado
+  } else if (S.vendDrill) {
+    renderVendedorIndividual(el, S.vendDrill); // admin clicou numa linha do ranking
   } else {
     await renderVendedorTeam(el);
   }
+}
+
+// Abrir / voltar do detalhe pelo clique no ranking
+function openVend(id) { S.vendDrill = id; renderVendedores(); window.scrollTo(0, 0); }
+function voltarTime() { S.vendDrill = null; renderVendedores(); }
+
+// Cor relativa à média do time (verde melhor, vermelho pior, neutro perto)
+function _relColor(v, avg, higherBetter) {
+  if (!avg || avg <= 0) return 'var(--text-secondary)';
+  const r = v / avg;
+  if (r >= 0.92 && r <= 1.08) return 'var(--text-secondary)';
+  const better = higherBetter ? v > avg : v < avg;
+  return better ? 'var(--green)' : 'var(--red)';
 }
 
 // ── MODE 1: Team Ranking ──────────────────────────────────
@@ -25,7 +43,7 @@ async function renderVendedorTeam(el) {
     if (!vm.has(d.id_vendedor)) vm.set(d.id_vendedor, { id: d.id_vendedor, nome: d.nome_vendedor || '', fat: 0, cli: new Set(), ped: new Set() });
     const v = vm.get(d.id_vendedor);
     v.fat += docFat(d);
-    if (d.id_cliente) v.cli.add(d.id_cliente);
+    if (d.id_cliente) v.cli.add(_cardKey(d.id_cliente));
     if (d.id_doc) v.ped.add(d.id_doc);
   });
 
@@ -59,8 +77,11 @@ async function renderVendedorTeam(el) {
     const v = c.id_vendedor_responsavel; if(!v) return;
     if(!esforco.has(v)) esforco.set(v, {cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0});
     const e = esforco.get(v); e.cart++;
-    const comprou = buyersByV.get(v) && buyersByV.get(v).has(c.id_cliente);
-    const falou = (notaByV.get(v) && notaByV.get(v).has(c.id_cliente)) || _inPt(c.ultimo_contato_umbler);
+    // Card-level: compra/contato de qualquer irmão do card conta pro dono (senão vira falso "parada")
+    const ids = cardIds(c.id_cliente);
+    const bset = buyersByV.get(v), nset = notaByV.get(v);
+    const comprou = bset && ids.some(x => bset.has(x));
+    const falou = (nset && ids.some(x => nset.has(x))) || _inPt(c.ultimo_contato_umbler);
     const fat = Number(c.faturamento_total) || 0;
     if(falou) e.falados++;
     if(falou && comprou) e.ativa++;
@@ -68,13 +89,49 @@ async function renderVendedorTeam(el) {
     else if(!falou && !comprou) { e.parada++; e.fatParada += fat; }
   });
 
+  // Médias do time (a "régua" de comparação)
+  const _mCob = [], _mAtiva = [];
+  let _sumParada = 0, _sumTicket = 0, _sumCli = 0, _sumPed = 0, _cntParadaCli = 0;
+  vl.forEach(v => {
+    const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
+    _mCob.push(e.cart ? e.falados / e.cart * 100 : 0);
+    const cv = e.ativa + e.passiva;
+    if (cv > 0) _mAtiva.push(e.ativa / cv * 100);
+    _sumParada += e.fatParada; _cntParadaCli += e.parada;
+    _sumTicket += v.ticket; _sumCli += v.clientes; _sumPed += v.pedidos;
+  });
+  const nV = vl.length || 1;
+  const avg = {
+    fat:      fatTot / nV,
+    cob:      Math.round(_mCob.reduce((s, x) => s + x, 0) / nV),
+    ativa:    _mAtiva.length ? Math.round(_mAtiva.reduce((s, x) => s + x, 0) / _mAtiva.length) : 0,
+    parada:   _sumParada / nV,
+    clientes: _sumCli / nV,
+    pedidos:  _sumPed / nV,
+    ticket:   _sumTicket / nV,
+  };
+  const totParadaFat = _sumParada, totParadaCli = _cntParadaCli;
+
   el.innerHTML = `
     <div class="kgrid">
       ${kc('\u{1F4B0}', 'Faturamento', fmtK(fatTot), 'kc-b')}
       ${kc('\u{1F464}', 'Vendedores', vl.length, 'kc-p')}
-      ${kc('\u{1F465}', 'Clientes', new Set(S.docs.filter(d => allowedIds.has(d.id_vendedor)).map(d => d.id_cliente).filter(Boolean)).size, 'kc-g')}
+      ${kc('\u{1F465}', 'Clientes', new Set(S.docs.filter(d => allowedIds.has(d.id_vendedor) && d.id_cliente).map(d => _cardKey(d.id_cliente))).size, 'kc-g')}
       ${kc('\u{1F6D2}', 'Pedidos', new Set(S.docs.filter(d => allowedIds.has(d.id_vendedor)).map(d => d.id_doc).filter(Boolean)).size, 'kc-y')}
     </div>
+
+    ${vl.length ? `<div class="scard">
+      <div class="scard-title">\u{1F4D0} Régua da Equipe — referência pra comparar</div>
+      <div class="kgrid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        ${kc('\u{1F465}', 'Cobertura média', avg.cob + '%', 'kc-b')}
+        ${kc('\u{1F3AF}', 'Venda ativa média', avg.ativa + '%', 'kc-g')}
+        ${kc('\u{1F534}', 'Carteira parada (time)', fmtK(totParadaFat), 'kc-y')}
+        ${kc('\u{1F9FE}', 'Ticket médio', fmtK(avg.ticket), 'kc-p')}
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px">
+        \u{1F7E2} acima da média do time · \u{1F534} abaixo · ${totParadaCli} clientes parados que já faturaram · <b>clique num vendedor</b> pra abrir o detalhe.
+      </div>
+    </div>` : ''}
 
     <div class="scard">
       <div class="scard-title">\u{1F4CA} Ranking de Vendedores</div>
@@ -92,6 +149,18 @@ async function renderVendedorTeam(el) {
           <th style="width:140px;min-width:100px"></th>
         </tr></thead>
         <tbody>
+          <tr style="background:var(--surface2)">
+            <td></td>
+            <td style="font-weight:700;color:var(--text-secondary);white-space:nowrap">\u{1F4CF} Média da equipe</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.fat)}</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.cob}%</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.parada)}</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.clientes)}</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.pedidos)}</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.ticket)}</td>
+            <td></td>
+          </tr>
           ${vl.map((v, i) => {
             const h = crmH.get(v.id) || { a: 0, t: 0, r: 0 };
             const exp = S.expandVend === v.id;
@@ -110,16 +179,16 @@ async function renderVendedorTeam(el) {
             });
             const tcArr = [...tc.values()].sort((a, b) => b.fat - a.fat).slice(0, 5);
 
-            return `<tr class="cl" onclick="toggleVend(${v.id})">
-              <td style="text-align:center;font-size:12px;color:${exp ? 'var(--blue-mid)' : 'var(--text-muted)'}">${exp ? '\u25BC' : '\u25B6'}</td>
-              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${medal}</td>
+            return `<tr class="cl" onclick="openVend(${v.id})" title="Ver detalhe">
+              <td style="text-align:center;font-size:11px;color:var(--text-muted);font-weight:700">${i + 1}</td>
+              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${medal} <span style="color:var(--text-muted);font-weight:400">\u203A</span></td>
               <td class="r mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</td>
-              <td class="r mono" style="color:${cob>=50?'var(--green)':cob>=25?'var(--orange)':'var(--red)'};font-weight:700">${cob}%</td>
-              <td class="r mono" style="color:${pAtiva>=50?'var(--green)':'var(--text-secondary)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
-              <td class="r mono" style="color:${e.fatParada>0?'var(--red)':'var(--text-muted)'}">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
+              <td class="r mono" style="color:${_relColor(cob, avg.cob, true)};font-weight:700">${cob}%</td>
+              <td class="r mono" style="color:${compV?_relColor(pAtiva, avg.ativa, true):'var(--text-muted)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
+              <td class="r mono" style="color:${e.fatParada>0?_relColor(e.fatParada, avg.parada, false):'var(--text-muted)'};font-weight:600">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
               <td class="r mono" style="color:var(--text-secondary)">${v.clientes}</td>
               <td class="r mono" style="color:var(--text-secondary)">${v.pedidos}</td>
-              <td class="r mono" style="color:var(--text-secondary)">${fmtK(v.ticket)}</td>
+              <td class="r mono" style="color:${_relColor(v.ticket, avg.ticket, true)}">${fmtK(v.ticket)}</td>
               <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat / maxF * 100)}%"></div></div></td>
             </tr>
             ${exp ? `<tr class="expand-row"><td colspan="10"><div class="expand-inner">
@@ -150,8 +219,9 @@ function _vquad(cor, bg, titulo, n, sub) {
 }
 
 // ── MODE 2: Individual Panel ──────────────────────────────
-function renderVendedorIndividual(el) {
-  const vid = F.vendedorId;
+function renderVendedorIndividual(el, vidOverride) {
+  const vid = vidOverride || F.vendedorId;
+  const isDrill = !F.vendedorId && vidOverride;  // admin clicou no ranking (não é login travado)
   const vInfo = S.vendedores.find(v => v.id_vendedor === vid);
   const nomeVend = vInfo ? vInfo.nome_vendedor : '';
 
@@ -165,7 +235,7 @@ function renderVendedorIndividual(el) {
   const fatTotal = myDocs.reduce((s, d) => s + docFat(d), 0);
   const pedidoSet = new Set(myDocs.map(d => d.id_doc).filter(Boolean));
   const pedidos = pedidoSet.size;
-  const clienteSet = new Set(myDocs.map(d => d.id_cliente).filter(Boolean));
+  const clienteSet = new Set(myDocs.filter(d => d.id_cliente).map(d => _cardKey(d.id_cliente)));
   const clientesAtendidos = clienteSet.size;
   const ticketMedio = pedidos ? fatTotal / pedidos : 0;
   const carteiraTotal = myCarteira.length;
@@ -248,11 +318,13 @@ function renderVendedorIndividual(el) {
   const _inP   = ts => { const d = _dOnly(ts); return d && d >= F.dtStart && d <= F.dtEnd; };
   const buyerSet = new Set(myDocs.map(d => d.id_cliente).filter(Boolean));
   const notaSet  = new Set(myAtividades.map(a => a.id_cliente).filter(Boolean));
-  const _falou   = c => notaSet.has(c.id_cliente) || _inP(c.ultimo_contato_umbler);
+  // Card-level: compra/contato de qualquer irmão do card conta pro dono
+  const _comprou = c => cardIds(c.id_cliente).some(x => buyerSet.has(x));
+  const _falou   = c => cardIds(c.id_cliente).some(x => notaSet.has(x)) || _inP(c.ultimo_contato_umbler);
   let mAtiva = 0, mPassiva = 0, mProspec = 0, mParada = 0, mFatPassiva = 0, mFatParada = 0;
   const paradaList = [];
   myCarteira.forEach(c => {
-    const comprou = buyerSet.has(c.id_cliente);
+    const comprou = _comprou(c);
     const falou = _falou(c);
     const fat = Number(c.faturamento_total) || 0;
     if (falou && comprou) mAtiva++;
@@ -269,6 +341,7 @@ function renderVendedorIndividual(el) {
   el.innerHTML = `
     <!-- Header -->
     <div style="margin-bottom:20px">
+      ${isDrill ? `<button onclick="voltarTime()" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--text-secondary);cursor:pointer;margin-bottom:10px">\u2039 Voltar pro ranking</button>` : ''}
       <h2 style="margin:0;font-size:22px;font-weight:700;color:var(--text-primary)">${sN(nomeVend) !== '\u2014' ? nomeVend : 'Vendedor'}</h2>
       ${vInfo && vInfo.departamento ? `<span style="font-size:13px;color:var(--text-muted)">${vInfo.departamento}</span>` : ''}
     </div>

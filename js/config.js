@@ -40,6 +40,8 @@ const S = {
   search: '',
   selId: null, selCliente: null,
   expandVend: null,
+  vendDrill: null,
+  cardOf: new Map(), cardMembers: new Map(),
   umblerOpen: true,
   // prospecção geral (sem vendedor) e vencidos (prazo expirado)
   prospGeral: [],

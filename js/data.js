@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════════════════════
 async function init() {
   initPeriod();
-  await Promise.all([loadConfig(), loadVendedores(), loadDimMap()]);
+  await Promise.all([loadConfig(), loadVendedores(), loadDimMap(), loadCardMap()]);
   populateVendFilter();
   // Aplicar filtro automático pelo usuário logado
   await aplicarFiltroUsuario();
@@ -90,6 +90,7 @@ function onCustomDate() {
 }
 function onVendChange(v) {
   F.vendedorId=v?Number(v):null;
+  S.vendDrill=null; // filtro do topo manda: sai do drill
   refreshDocs();
   // recarrega CRM com filtro de vendedor
   loadCarteira().then(()=>{loadProspeccao().then(()=>{if(S.tab==='crm')renderCRM();});});
@@ -139,6 +140,32 @@ async function loadDimMap() {
   S.dimMap=new Map();(Array.isArray(d)?d:[]).forEach(r=>S.dimMap.set(r.id_cliente,r));
 }
 // CPF filtrado na view atac_crm_clientes via campo nao_comercial — sem necessidade de lista no frontend
+
+// ── Mapa de CARDS ─────────────────────────────────────────
+// A operação trata CARD, não cliente: um card agrupa 2-3 cadastros (duplicados
+// do ERP). Sem isso, compra/atividade que cai no cadastro irmão faz o dono
+// parecer "carteira parada". Carrega uma vez (é estático, ~900 linhas).
+async function loadCardMap() {
+  S.cardOf = new Map();      // id_cliente -> id_card
+  S.cardMembers = new Map(); // id_card -> [id_cliente,...]
+  try {
+    const d = await sbQ('atac_card_membro', 'select=id_card,id_cliente');
+    (Array.isArray(d) ? d : []).forEach(r => {
+      if (r.id_cliente == null || r.id_card == null) return;
+      S.cardOf.set(r.id_cliente, r.id_card);
+      if (!S.cardMembers.has(r.id_card)) S.cardMembers.set(r.id_card, []);
+      S.cardMembers.get(r.id_card).push(r.id_cliente);
+    });
+  } catch (e) { console.warn('loadCardMap:', e); }
+}
+// Todos os id_cliente do mesmo card (inclui ele próprio). Cliente sem card → [id].
+function cardIds(id) {
+  if (id == null) return [];
+  const card = S.cardOf && S.cardOf.get(id);
+  if (card == null) return [id];
+  const m = S.cardMembers.get(card);
+  return (m && m.length) ? m : [id];
+}
 
 async function loadDocs() {
   let params=`select=id_doc,id_vendedor,nome_vendedor,id_cliente,nome_cliente,id_empresa,empresa,data_faturamento,faturamento_doc,faturamento_liquido,qtd_itens_doc&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${F.dtStart}&data_faturamento=lte.${F.dtEnd}&order=data_faturamento.desc`;

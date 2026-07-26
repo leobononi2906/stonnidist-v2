@@ -64,6 +64,7 @@ function gotoTab(tab) {
       });
     }
   }
+  if(tab==='vendedores') S.vendDrill=null; // entra sempre no ranking
   if(tab==='home'||tab==='vendedores'){
     // Carrega dados de gestão se ainda não carregados
     if(!S.itens.length) refreshGestao().then(()=>{
