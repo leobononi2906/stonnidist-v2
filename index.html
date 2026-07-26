@@ -110,12 +110,15 @@
       <div class="topbar-filters" id="topbar-filters">
         <span class="tf-label">Período</span>
         <select id="f-period" class="filter-select" onchange="onPeriodChange(this.value)">
+          <option value="ult_7d">Últimos 7 dias</option>
+          <option value="ult_30d">Últimos 30 dias</option>
+          <option value="ult_90d">Últimos 90 dias</option>
           <option value="mes_atual">Mês Atual</option>
           <option value="mes_anterior">Mês Anterior</option>
           <option value="ult_3m">Últimos 3M</option>
           <option value="ult_6m">Últimos 6M</option>
           <option value="ano_atual">Ano Atual</option>
-          <option value="custom">Personalizado</option>
+          <option value="custom">📅 Escolher datas…</option>
         </select>
         <input id="f-start" type="date" class="filter-input hidden" onchange="onCustomDate()"/>
         <span id="f-sep" class="tf-label hidden">até</span>
@@ -580,21 +583,21 @@ window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 </script>
 <!-- Módulos JS (substituem crm.js monolítico) -->
-<script src="js/config.js?v=20260726b"></script>
-<script src="js/supabase.js?v=20260726b"></script>
-<script src="js/ui.js?v=20260726b"></script>
-<script src="js/data.js?v=20260726b"></script>
-<script src="js/home.js?v=20260726b"></script>
-<script src="js/linhas.js?v=20260726b"></script>
-<script src="js/vendedores.js?v=20260726b"></script>
-<script src="js/crm.js?v=20260726b"></script>
-<script src="js/drawer.js?v=20260726b"></script>
-<script src="js/umbler.js?v=20260726b"></script>
-<script src="js/erp.js?v=20260726b"></script>
-<script src="js/vendedor-modal.js?v=20260726b"></script>
-<script src="js/agenda.js?v=20260726b"></script>
-<script src="js/config-page.js?v=20260726b"></script>
-<script src="js/exports.js?v=20260726b"></script>
+<script src="js/config.js?v=20260726c"></script>
+<script src="js/supabase.js?v=20260726c"></script>
+<script src="js/ui.js?v=20260726c"></script>
+<script src="js/data.js?v=20260726c"></script>
+<script src="js/home.js?v=20260726c"></script>
+<script src="js/linhas.js?v=20260726c"></script>
+<script src="js/vendedores.js?v=20260726c"></script>
+<script src="js/crm.js?v=20260726c"></script>
+<script src="js/drawer.js?v=20260726c"></script>
+<script src="js/umbler.js?v=20260726c"></script>
+<script src="js/erp.js?v=20260726c"></script>
+<script src="js/vendedor-modal.js?v=20260726c"></script>
+<script src="js/agenda.js?v=20260726c"></script>
+<script src="js/config-page.js?v=20260726c"></script>
+<script src="js/exports.js?v=20260726c"></script>
 
 <!-- MODAL EDITAR VÍNCULO ERP -->
 <div id="modal-edit-vinc-erp" class="modal-ov">

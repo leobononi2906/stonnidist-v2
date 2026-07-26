@@ -58,6 +58,8 @@ async function aplicarFiltroUsuario() {
 function initPeriod() {
   const now=new Date(), y=now.getFullYear(), m=now.getMonth();
   setRange(new Date(y,m,1), new Date(y,m+1,0));
+  // sincroniza o select com o período padrão (evita mostrar opção errada no load)
+  const sel=document.getElementById('f-period'); if(sel) sel.value=F.period;
 }
 function setRange(s,e) {
   const p=n=>String(n).padStart(2,'0');
@@ -72,7 +74,10 @@ function onPeriodChange(v) {
   const cst=document.getElementById('f-start'),ced=document.getElementById('f-end'),sep=document.getElementById('f-sep');
   const show=(v==='custom');
   cst.classList.toggle('hidden',!show); ced.classList.toggle('hidden',!show); sep.classList.toggle('hidden',!show);
-  if(v==='mes_atual')   setRange(new Date(y,m,1),new Date(y,m+1,0));
+  if(v==='ult_7d')      setRange(new Date(y,m,n.getDate()-6), n);
+  else if(v==='ult_30d') setRange(new Date(y,m,n.getDate()-29), n);
+  else if(v==='ult_90d') setRange(new Date(y,m,n.getDate()-89), n);
+  else if(v==='mes_atual')   setRange(new Date(y,m,1),new Date(y,m+1,0));
   else if(v==='mes_anterior') setRange(new Date(y,m-1,1),new Date(y,m,0));
   else if(v==='ult_3m') setRange(new Date(y,m-2,1),new Date(y,m+1,0));
   else if(v==='ult_6m') setRange(new Date(y,m-5,1),new Date(y,m+1,0));

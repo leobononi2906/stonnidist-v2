@@ -49,6 +49,25 @@ async function renderVendedorTeam(el) {
     else if (st === 'PERDIDO') h.r++;
   });
 
+  // Esforço por vendedor: cobertura, venda ativa, carteira parada
+  const _inPt = ts => { const d = ts ? String(ts).slice(0,10) : ''; return d && d >= F.dtStart && d <= F.dtEnd; };
+  const buyersByV = new Map(), notaByV = new Map();
+  S.docs.forEach(d => { if(!d.id_cliente||!d.id_vendedor) return; if(!buyersByV.has(d.id_vendedor)) buyersByV.set(d.id_vendedor, new Set()); buyersByV.get(d.id_vendedor).add(d.id_cliente); });
+  (S.atividades||[]).forEach(a => { const v=a.id_vendedor_responsavel; if(!v||!a.id_cliente) return; if(!notaByV.has(v)) notaByV.set(v, new Set()); notaByV.get(v).add(a.id_cliente); });
+  const esforco = new Map(); // vid -> {cart, falados, ativa, passiva, parada, fatParada}
+  S.carteira.forEach(c => {
+    const v = c.id_vendedor_responsavel; if(!v) return;
+    if(!esforco.has(v)) esforco.set(v, {cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0});
+    const e = esforco.get(v); e.cart++;
+    const comprou = buyersByV.get(v) && buyersByV.get(v).has(c.id_cliente);
+    const falou = (notaByV.get(v) && notaByV.get(v).has(c.id_cliente)) || _inPt(c.ultimo_contato_umbler);
+    const fat = Number(c.faturamento_total) || 0;
+    if(falou) e.falados++;
+    if(falou && comprou) e.ativa++;
+    else if(!falou && comprou) e.passiva++;
+    else if(!falou && !comprou) { e.parada++; e.fatParada += fat; }
+  });
+
   el.innerHTML = `
     <div class="kgrid">
       ${kc('\u{1F4B0}', 'Faturamento', fmtK(fatTot), 'kc-b')}
@@ -64,7 +83,9 @@ async function renderVendedorTeam(el) {
           <th style="width:30px">#</th>
           <th>Vendedor</th>
           <th class="r">Faturamento</th>
-          <th class="r">% Equipe</th>
+          <th class="r" title="% da carteira que ele tocou (nota ou Umbler)">Cobertura</th>
+          <th class="r" title="% das vendas geradas por contato (n\u00e3o passivas)">Venda ativa</th>
+          <th class="r" title="Faturamento hist\u00f3rico da carteira sem contato nem compra no per\u00edodo">Parada</th>
           <th class="r">Clientes</th>
           <th class="r">Pedidos</th>
           <th class="r">Ticket M\u00e9dio</th>
@@ -75,7 +96,10 @@ async function renderVendedorTeam(el) {
             const h = crmH.get(v.id) || { a: 0, t: 0, r: 0 };
             const exp = S.expandVend === v.id;
             const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : '';
-            const share = fatTot ? Math.round(v.fat / fatTot * 100) : 0;
+            const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
+            const cob = e.cart ? Math.round(e.falados / e.cart * 100) : 0;
+            const compV = e.ativa + e.passiva;
+            const pAtiva = compV ? Math.round(e.ativa / compV * 100) : 0;
 
             // Top 5 clientes deste vendedor
             const tc = new Map();
@@ -90,13 +114,15 @@ async function renderVendedorTeam(el) {
               <td style="text-align:center;font-size:12px;color:${exp ? 'var(--blue-mid)' : 'var(--text-muted)'}">${exp ? '\u25BC' : '\u25B6'}</td>
               <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${medal}</td>
               <td class="r mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</td>
-              <td class="r"><span class="b-tag" style="background:var(--blue-pale,#E8F4FD);color:var(--blue-mid);font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:4px">${share}%</span></td>
+              <td class="r mono" style="color:${cob>=50?'var(--green)':cob>=25?'var(--orange)':'var(--red)'};font-weight:700">${cob}%</td>
+              <td class="r mono" style="color:${pAtiva>=50?'var(--green)':'var(--text-secondary)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
+              <td class="r mono" style="color:${e.fatParada>0?'var(--red)':'var(--text-muted)'}">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
               <td class="r mono" style="color:var(--text-secondary)">${v.clientes}</td>
               <td class="r mono" style="color:var(--text-secondary)">${v.pedidos}</td>
               <td class="r mono" style="color:var(--text-secondary)">${fmtK(v.ticket)}</td>
               <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat / maxF * 100)}%"></div></div></td>
             </tr>
-            ${exp ? `<tr class="expand-row"><td colspan="8"><div class="expand-inner">
+            ${exp ? `<tr class="expand-row"><td colspan="10"><div class="expand-inner">
               <div class="hgrid">
                 <div class="hbox ha"><div class="n">${h.a}</div><div class="l">Ativos</div></div>
                 <div class="hbox ht"><div class="n">${h.t}</div><div class="l">Aten\u00e7\u00e3o</div></div>
@@ -112,6 +138,15 @@ async function renderVendedorTeam(el) {
         </tbody>
       </table></div>` : '<div class="empty-msg">Sem faturamento no per\u00edodo selecionado</div>'}
     </div>`;
+}
+
+// quadrante da matriz Trabalhou × Comprou
+function _vquad(cor, bg, titulo, n, sub) {
+  return `<div style="background:${bg};border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+    <div style="font-size:11px;font-weight:700;color:${cor};margin-bottom:4px">${titulo}</div>
+    <div style="font-size:26px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text-primary);line-height:1">${n}</div>
+    <div style="font-size:11px;color:var(--text-secondary);margin-top:3px">${sub}</div>
+  </div>`;
 }
 
 // ── MODE 2: Individual Panel ──────────────────────────────
@@ -206,6 +241,31 @@ function renderVendedorIndividual(el) {
     .sort((a, b) => b.dias_sem_interacao - a.dias_sem_interacao)
     .slice(0, 10);
 
+  // ── Matriz Trabalhou × Comprou ──
+  // "Falou" = teve nota OU contato Umbler no período (fonte não importa; a VENDA não conta como contato).
+  // "Comprou" = teve pedido no período.
+  const _dOnly = ts => ts ? String(ts).slice(0, 10) : '';
+  const _inP   = ts => { const d = _dOnly(ts); return d && d >= F.dtStart && d <= F.dtEnd; };
+  const buyerSet = new Set(myDocs.map(d => d.id_cliente).filter(Boolean));
+  const notaSet  = new Set(myAtividades.map(a => a.id_cliente).filter(Boolean));
+  const _falou   = c => notaSet.has(c.id_cliente) || _inP(c.ultimo_contato_umbler);
+  let mAtiva = 0, mPassiva = 0, mProspec = 0, mParada = 0, mFatPassiva = 0, mFatParada = 0;
+  const paradaList = [];
+  myCarteira.forEach(c => {
+    const comprou = buyerSet.has(c.id_cliente);
+    const falou = _falou(c);
+    const fat = Number(c.faturamento_total) || 0;
+    if (falou && comprou) mAtiva++;
+    else if (!falou && comprou) { mPassiva++; mFatPassiva += fat; }
+    else if (falou && !comprou) mProspec++;
+    else { mParada++; mFatParada += fat; paradaList.push(c); }
+  });
+  paradaList.sort((a, b) => (Number(b.faturamento_total) || 0) - (Number(a.faturamento_total) || 0));
+  const mFalados = mAtiva + mProspec;
+  const mCompraram = mAtiva + mPassiva;
+  const mCobertura = myCarteira.length ? Math.round(mFalados / myCarteira.length * 100) : 0;
+  const mPctAtiva = mCompraram ? Math.round(mAtiva / mCompraram * 100) : 0;
+
   el.innerHTML = `
     <!-- Header -->
     <div style="margin-bottom:20px">
@@ -221,6 +281,35 @@ function renderVendedorIndividual(el) {
       ${kc('\u{1F3AF}', 'Ticket M\u00e9dio', fmtK(ticketMedio), 'kc-p')}
       ${kc('\u{1F4CB}', 'Carteira total', carteiraTotal, 'kc-b')}
       ${kc('\u{1F195}', 'Novos clientes', novosClientes, 'kc-g')}
+    </div>
+
+    <!-- Matriz Trabalhou x Comprou -->
+    <div class="scard">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="scard-title" style="margin-bottom:0">\u{1F3AF} Trabalhou × Comprou — no período</div>
+        <div style="font-size:12px;color:var(--text-secondary)">
+          Cobertura <b style="color:var(--blue-mid)">${mCobertura}%</b> (${mFalados}/${myCarteira.length}) ·
+          Venda ativa <b style="color:${mPctAtiva>=50?'var(--green)':'var(--orange)'}">${mPctAtiva}%</b>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:78px 1fr 1fr;gap:10px;align-items:stretch">
+        <div></div>
+        <div style="text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)">\u{1F6D2} Comprou</div>
+        <div style="text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)">\u{1F6AB} Não comprou</div>
+        <div style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text-secondary);text-align:center">\u{1F4AC} Falou</div>
+        ${_vquad('var(--green)','var(--green-bg)','\u{1F7E2} Venda ativa',mAtiva,'ele gerou a venda')}
+        ${_vquad('var(--blue-mid)','var(--blue-pale)','\u{1F535} Prospecção',mProspec,'trabalhando, sem venda')}
+        <div style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--red);text-align:center">\u{1F515} Não falou</div>
+        ${_vquad('var(--orange)','var(--orange-bg)','\u{1F7E1} Venda passiva',mPassiva,'caiu no colo · '+fmtK(mFatPassiva))}
+        ${_vquad('var(--red)','var(--red-bg)','\u{1F534} Carteira parada',mParada,'sem toque · '+fmtK(mFatParada))}
+      </div>
+      ${mParada>0 && paradaList.some(c=>(Number(c.faturamento_total)||0)>0) ? `<div style="margin-top:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px">⚠ Carteira parada que já faturou — sem contato nem compra no período</div>
+        ${paradaList.filter(c=>(Number(c.faturamento_total)||0)>0).slice(0,5).map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">${sN(c.nome_cliente)}</span>
+          <span class="mono" style="color:var(--text-secondary);flex-shrink:0;margin-left:8px;font-weight:600">${fmtK(Number(c.faturamento_total)||0)}${c.dias_sem_compra!=null?` · ${c.dias_sem_compra}d`:''}</span>
+        </div>`).join('')}
+      </div>`:''}
     </div>
 
     <!-- Saude da Carteira -->

@@ -34,6 +34,13 @@ Análise de grupo/subgrupo ao longo do tempo. Arquivo `js/linhas.js` (isolado).
 - **Aba Produtos agora é GLOBAL**: `loadLinhas` ignora os filtros master (período/vendedor/empresa) e o filtro master fica **escondido** na aba (ui.js gotoTab). Motivo: no login, `aplicarFiltroUsuario` (data.js:50) auto-seta `F.vendedorId`, e isso zerava a aba → subfiltros (6M/grupo) pareciam mortos. A aba tem os próprios subfiltros. `APP.refresh` também recarrega a aba.
 - **Bug gráfico "Faturamento por Linha" (Vendedores)**: `total_item` vem como **string** do Supabase; `vendedores.js` somava sem `Number()` → concatenava texto → barra com largura `NaN` → gráfico vazio. Corrigido com `Number(it.total_item)||0` (linhas do grupoMap e do fat prévio). **Regra:** todo `total_item`/`qtd`/numérico do Supabase precisa de `Number(...)` antes de somar.
 
+### Análise de vendedores — esforço × resultado (jul/2026)
+Objetivo: medir se o vendedor **trabalha** a carteira ou só **colhe** venda garantida.
+- **Filtro de período**: atalhos rápidos Últimos 7/30/90 dias + "📅 Escolher datas" (calendário via input date). `onPeriodChange` em data.js; select sincronizado no `initPeriod`.
+- **Painel individual** (`renderVendedorIndividual`): matriz **Trabalhou × Comprou** (🟢 venda ativa / 🟡 passiva / 🔵 prospecção / 🔴 carteira parada) + lista da carteira parada que já faturou. "Falou" = nota OU Umbler no período (fonte não importa; a VENDA não conta como contato — o campo `dias_sem_interacao` da view inclui a compra, por isso uso `nota (S.atividades)` + `ultimo_contato_umbler`). Ritmo já existia (`_renderAtividadeDiaria`).
+- **Ranking de equipe** (`renderVendedorTeam`): novas colunas Cobertura % / Venda ativa % / Carteira parada (R$). Substituiu a coluna "% Equipe" (a barra já mostra o share). Computado em `esforco` (Map por vendedor).
+- **Regra chave**: "falou" nunca inclui a venda. Comprou = pedido no período (`myDocs`/`S.docs`).
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
