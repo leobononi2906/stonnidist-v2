@@ -91,14 +91,15 @@ async function renderVendedorTeam(el) {
 
   // Médias do time (a "régua" de comparação)
   const _mCob = [], _mAtiva = [];
-  let _sumParada = 0, _sumTicket = 0, _sumCli = 0, _sumPed = 0, _cntParadaCli = 0;
+  let _sumParada = 0, _sumTicket = 0, _sumFal = 0, _sumProsp = 0, _cntParadaCli = 0;
   vl.forEach(v => {
     const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
     _mCob.push(e.cart ? e.falados / e.cart * 100 : 0);
     const cv = e.ativa + e.passiva;
     if (cv > 0) _mAtiva.push(e.ativa / cv * 100);
     _sumParada += e.fatParada; _cntParadaCli += e.parada;
-    _sumTicket += v.ticket; _sumCli += v.clientes; _sumPed += v.pedidos;
+    _sumFal += e.falados; _sumProsp += Math.max(0, e.falados - e.ativa);
+    _sumTicket += v.ticket;
   });
   const nV = vl.length || 1;
   const avg = {
@@ -106,8 +107,8 @@ async function renderVendedorTeam(el) {
     cob:      Math.round(_mCob.reduce((s, x) => s + x, 0) / nV),
     ativa:    _mAtiva.length ? Math.round(_mAtiva.reduce((s, x) => s + x, 0) / _mAtiva.length) : 0,
     parada:   _sumParada / nV,
-    clientes: _sumCli / nV,
-    pedidos:  _sumPed / nV,
+    falados:  _sumFal / nV,
+    prospec:  _sumProsp / nV,
     ticket:   _sumTicket / nV,
   };
   const totParadaFat = _sumParada, totParadaCli = _cntParadaCli;
@@ -141,12 +142,12 @@ async function renderVendedorTeam(el) {
           <th>Vendedor</th>
           <th class="r">Faturamento</th>
           <th class="r" title="% da carteira que ele tocou (nota ou Umbler)">Cobertura</th>
+          <th class="r" title="N\u00ba de clientes da carteira atendidos no per\u00edodo (nota ou Umbler)">Falados</th>
+          <th class="r" title="Clientes SEM compra que ele atendeu \u2014 prospec\u00e7\u00e3o pura (trabalho, n\u00e3o colheita)">Prospec\u00e7\u00e3o</th>
           <th class="r" title="% das vendas geradas por contato (n\u00e3o passivas)">Venda ativa</th>
           <th class="r" title="Faturamento hist\u00f3rico da carteira sem contato nem compra no per\u00edodo">Parada</th>
-          <th class="r">Clientes</th>
-          <th class="r">Pedidos</th>
           <th class="r">Ticket M\u00e9dio</th>
-          <th style="width:140px;min-width:100px"></th>
+          <th style="width:130px;min-width:90px"></th>
         </tr></thead>
         <tbody>
           <tr style="background:var(--surface2)">
@@ -154,10 +155,10 @@ async function renderVendedorTeam(el) {
             <td style="font-weight:700;color:var(--text-secondary);white-space:nowrap">\u{1F4CF} Média da equipe</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.fat)}</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.cob}%</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.falados)}</td>
+            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.prospec)}</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.parada)}</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.clientes)}</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.pedidos)}</td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.ticket)}</td>
             <td></td>
           </tr>
@@ -169,6 +170,8 @@ async function renderVendedorTeam(el) {
             const cob = e.cart ? Math.round(e.falados / e.cart * 100) : 0;
             const compV = e.ativa + e.passiva;
             const pAtiva = compV ? Math.round(e.ativa / compV * 100) : 0;
+            const falados = e.falados;
+            const prospec = Math.max(0, e.falados - e.ativa);
 
             // Top 5 clientes deste vendedor
             const tc = new Map();
@@ -184,10 +187,10 @@ async function renderVendedorTeam(el) {
               <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${medal} <span style="color:var(--text-muted);font-weight:400">\u203A</span></td>
               <td class="r mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</td>
               <td class="r mono" style="color:${_relColor(cob, avg.cob, true)};font-weight:700">${cob}%</td>
+              <td class="r mono" style="color:${_relColor(falados, avg.falados, true)};font-weight:600">${falados}</td>
+              <td class="r mono" style="color:${_relColor(prospec, avg.prospec, true)};font-weight:700">${prospec}</td>
               <td class="r mono" style="color:${compV?_relColor(pAtiva, avg.ativa, true):'var(--text-muted)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
               <td class="r mono" style="color:${e.fatParada>0?_relColor(e.fatParada, avg.parada, false):'var(--text-muted)'};font-weight:600">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
-              <td class="r mono" style="color:var(--text-secondary)">${v.clientes}</td>
-              <td class="r mono" style="color:var(--text-secondary)">${v.pedidos}</td>
               <td class="r mono" style="color:${_relColor(v.ticket, avg.ticket, true)}">${fmtK(v.ticket)}</td>
               <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat / maxF * 100)}%"></div></div></td>
             </tr>
