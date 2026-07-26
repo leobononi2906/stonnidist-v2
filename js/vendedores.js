@@ -301,13 +301,14 @@ function renderVendedorIndividual(el, vidOverride) {
   const atividadesTotal = myAtividades.length;
   const tarefasResolvidas = myAtividades.filter(a => a.tipo === 'TAREFA' && a.resolvido === true).length;
 
-  // Contatos Umbler
+  // Contatos Umbler — nome_atendente do contato = nome_vendedor_erp (nome), NÃO usuario_umbler
   const umblerMap = (S.umblerVendMap || []).find(m => m.id_vendedor_erp === vid);
-  const umblerUser = umblerMap ? umblerMap.usuario_umbler : null;
   const nomeVendErp = umblerMap ? umblerMap.nome_vendedor_erp : nomeVend;
-  const contatosUmbler = umblerUser
-    ? (S.contatosUmbler || []).filter(c => c.nome_atendente === umblerUser).length
-    : 0;
+  const _umNomes = new Set((S.umblerVendMap || [])
+    .filter(m => m.id_vendedor_erp === vid && m.nome_vendedor_erp)
+    .map(m => String(m.nome_vendedor_erp).toUpperCase()));
+  const _isMyUmbler = c => c.nome_atendente && _umNomes.has(String(c.nome_atendente).toUpperCase());
+  const contatosUmbler = (S.contatosUmbler || []).filter(_isMyUmbler).length;
 
   // Clientes sem venda (prospeccao ativa)
   const clientesSemVenda = myCarteira.filter(c => c.status_crm === 'PROSPECCAO').length;
@@ -447,7 +448,7 @@ function renderVendedorIndividual(el, vidOverride) {
     </div>
 
     <!-- Atividade Diária / Semanal -->
-    ${_renderAtividadeDiaria(myAtividades, S.contatosUmbler || [], umblerUser)}
+    ${_renderAtividadeDiaria(myAtividades, S.contatosUmbler || [], _isMyUmbler)}
 
     <!-- Faturamento por Linha -->
     <div class="scard">
@@ -508,7 +509,7 @@ function renderVendedorIndividual(el, vidOverride) {
 }
 
 // ── Atividade Diária / Semanal ────────────────────────────
-function _renderAtividadeDiaria(atividades, contatosUmbler, umblerUser) {
+function _renderAtividadeDiaria(atividades, contatosUmbler, umblerPred) {
   // Agrupar atividades CRM por dia
   const porDia = new Map();
   atividades.forEach(a => {
@@ -526,8 +527,8 @@ function _renderAtividadeDiaria(atividades, contatosUmbler, umblerUser) {
 
   // Agrupar contatos Umbler por dia
   const umblerPorDia = new Map();
-  if (umblerUser) {
-    contatosUmbler.filter(c => c.nome_atendente === umblerUser).forEach(c => {
+  if (umblerPred) {
+    contatosUmbler.filter(umblerPred).forEach(c => {
       const dia = (c.ultimo_contato || '').substring(0, 10);
       if (!dia) return;
       umblerPorDia.set(dia, (umblerPorDia.get(dia) || 0) + 1);
