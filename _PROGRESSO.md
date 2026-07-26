@@ -46,6 +46,11 @@ Objetivo: medir se o vendedor **trabalha** a carteira ou só **colhe** venda gar
 - **Régua da Equipe** (modo Todos): card de resumo com médias do time (cobertura, venda ativa, parada total, ticket) + linha "📏 Média da equipe" no topo do ranking; células de cobertura/venda ativa/parada/ticket coloridas por `_relColor` (verde acima da média, vermelho abaixo, neutro perto ±8%).
 - **Drill por clique**: clicar na linha do ranking abre o painel individual (`S.vendDrill` + `openVend`/`voltarTime`, botão "‹ Voltar pro ranking"). Filtro do topo continua para login do vendedor. `S.vendDrill` reseta ao entrar na aba (ui.js) e ao trocar o filtro do topo (onVendChange). Usa dados globais já carregados → clique instantâneo. Bloco de expand antigo (`toggleVend`/`S.expandVend`) virou código morto inofensivo.
 
+### Ranking — esforço > colheita + ritmo + fix Umbler (jul/2026, v=20260726g)
+- **Colunas novas**: trocado Clientes/Pedidos por **Falados** (nº clientes da carteira atendidos no período) e **Prospecção** (clientes SEM compra atendidos = `falados - venda_ativa`; sinal de caça vs colheita). Ordem: Cobertura · Falados · Prospecção · Ritmo · Venda ativa · Parada · Ticket. Média + cores relativas nas novas.
+- **Ritmo (sparkline)**: mini-barras de atividade por semana no período (nota + Umbler), normalizado pelo máximo global → mostra constante vs rajada. Semanas = buckets de 7 dias do período (cap 12).
+- **Fix Umbler (importante)**: contato Umbler mapeia pro vendedor por `nome_atendente = nome_vendedor_erp` (nome), **não** `usuario_umbler` (login). Corrigido no sparkline E no painel individual (KPI Contatos Umbler + atividade diária/semanal, que subcontavam). Ver memória `crm-atacado-umbler-atendente`. Achado: só ~2 vendedores registram nota; maioria da atividade é Umbler.
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
