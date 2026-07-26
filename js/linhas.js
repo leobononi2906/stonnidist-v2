@@ -140,7 +140,7 @@ function renderLinhas(){
       <option value="qtd"${sort==='qtd'?' selected':''}>Qtd</option>
       <option value="nome"${sort==='nome'?' selected':''}>Nome</option></select>`;
 
-    const titulo = sg ? `${g} · ${sg}` : g ? g : 'Todas as linhas';
+    const titulo = sg ? `${g} · ${sg}` : g ? g : 'Todos os produtos';
     const tHead=`<div class="lin-trow lin-thead"><span>Produto</span><span class="r">Qtd</span><span class="r">Média 3M</span><span class="r">Últ.30D</span><span class="r">Var.</span></div>`;
     const tRows=prods.map(p=>`<div class="lin-trow">
       <span class="nm" title="${escH(p.nome)}">${escH(_truncate(p.nome,44))}</span>

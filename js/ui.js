@@ -37,7 +37,8 @@ function gotoTab(tab) {
   else if(tab==='crm' && S.mainTab==='prospeccao') setMainTab('carteira');
   // Filtros: no CRM só vendedor; config oculta tudo; resto mostra tudo
   const tf = document.getElementById('topbar-filters');
-  if (tab === 'config') {
+  if (tab === 'config' || tab === 'linhas') {
+    // Produtos é análise global com subfiltros próprios — não usa o filtro master
     if(tf) tf.style.display = 'none';
   } else if (tab === 'crm' || tab === 'prospeccao') {
     if(tf) tf.style.display = 'flex';

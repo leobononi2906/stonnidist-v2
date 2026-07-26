@@ -175,7 +175,7 @@ function renderVendedorIndividual(el) {
   myItens.forEach(it => {
     const g = it.grupo || 'Sem grupo';
     if (!grupoMap.has(g)) grupoMap.set(g, 0);
-    grupoMap.set(g, grupoMap.get(g) + it.total_item);
+    grupoMap.set(g, grupoMap.get(g) + (Number(it.total_item) || 0));
   });
   const grupoArr = [...grupoMap.entries()]
     .map(([nome, val]) => ({ nome, val }))
@@ -195,7 +195,7 @@ function renderVendedorIndividual(el) {
   myItensPrev.forEach(it => {
     if (!it.id_cliente) return;
     if (!cliPrevMap.has(it.id_cliente)) cliPrevMap.set(it.id_cliente, 0);
-    cliPrevMap.set(it.id_cliente, cliPrevMap.get(it.id_cliente) + it.total_item);
+    cliPrevMap.set(it.id_cliente, cliPrevMap.get(it.id_cliente) + (Number(it.total_item) || 0));
   });
   const topClientes = [...cliMap.values()].sort((a, b) => b.fat - a.fat).slice(0, 10);
   const topCliMax = Math.max(...topClientes.map(c => c.fat), 1);

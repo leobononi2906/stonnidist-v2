@@ -565,18 +565,16 @@ async function loadTrailing() {
   S.itensBase3m=Array.isArray(bse)?bse:[]; // total de 90 dias; dividir por 3 no render p/ média mensal
 }
 
-// Itens dos últimos 12 meses para a aba Linhas (grupo/subgrupo ao longo do tempo).
-// Uma query só alimenta série mensal + comparativo 30d/3m (recortado por data no cliente).
+// Itens dos últimos 12 meses para a aba Produtos (grupo/subgrupo ao longo do tempo).
+// Análise GLOBAL da empresa: NÃO usa os filtros master (período/vendedor/empresa) —
+// a aba tem os próprios subfiltros (grupo/subgrupo/janela). Isso evita o master "zerar" a aba.
 async function loadLinhas() {
   const p=n=>String(n).padStart(2,'0');
   const now=new Date();
   const start=new Date(now.getFullYear(), now.getMonth()-11, 1); // início de 12 meses atrás
   const s=`${start.getFullYear()}-${p(start.getMonth()+1)}-01`;
-  let f='';
-  if(F.vendedorId) f+=`&id_vendedor=eq.${F.vendedorId}`;
-  if(F.empresaId)  f+=`&id_empresa=eq.${F.empresaId}`;
   const sel='select=id_grupo,grupo,id_subgrupo,subgrupo,produto,qtd,total_item,data_faturamento';
-  const d=await sbQ('vw_comercial_itens_faturados',`${sel}&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${s}${f}&order=data_faturamento.asc`);
+  const d=await sbQ('vw_comercial_itens_faturados',`${sel}&tipo_saida=eq.DISTRIBUICAO&data_faturamento=gte.${s}&order=data_faturamento.asc`);
   S.linhas=Array.isArray(d)?d:[];
 }
 

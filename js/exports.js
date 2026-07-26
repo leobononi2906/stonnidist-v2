@@ -1,5 +1,6 @@
 // ═══ STONNI ATACADO — exports.js ═══
 window.APP={init, refresh: async function(){
+  if(S.tab==='linhas'){ await loadLinhas(); if(window.renderLinhas) renderLinhas(); return; }
   await Promise.all([loadDocs(),loadCarteira(),loadProspeccao(),loadUmbler(),loadOverdue(),loadToday()]);
   if(S.tab==='home'||S.tab==='vendedores') await refreshGestao();
   if(S.tab==='home')renderHome();
