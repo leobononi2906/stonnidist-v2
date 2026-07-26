@@ -8,6 +8,9 @@
 
 ## ✅ Feito (jul/2026)
 
+### 🔴 CRÍTICO — `js/umbler.js` não fechava a função `removerVincTel`
+O arquivo terminava sem o `}` final → **erro de sintaxe ("Unexpected end of input")** → o navegador descartava o `umbler.js` INTEIRO. Consequências: `abrirNovoContato`, `salvarNovoContato`, `toggleVincsTel`, `removerVincTel` etc. ficavam **indefinidos**, e o `exports.js` travava na 1ª referência indefinida (linha 58), deixando de expor tudo depois dela. Sintoma relatado: botão **"Criar Novo"** nos Contatos Sem Tratativa não fazia nada. Corrigido fechando a função. **Lição:** rodar `node --check js/*.js` antes de subir.
+
 ### Home — comparativo de tendência (bug "dados zerados")
 Eram **2 bugs**, não falta de dado:
 1. Janela de comparação: mês parcial vs mês cheio → enchia de `-100%`.

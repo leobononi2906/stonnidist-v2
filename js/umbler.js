@@ -377,3 +377,4 @@ async function removerVincTel(phId) {
   toast('Vínculo removido!');
   // Recarregar detalhe
   if (S.selId) { await loadDetalhe(S.selId); renderDrawer(); }
+}
