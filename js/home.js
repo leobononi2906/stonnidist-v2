@@ -13,7 +13,7 @@ function setTopPeriod(p) {
 }
 
 // ── estado de ordenação ──────────────────────────────────
-if (!S._homeSort) S._homeSort = { cliCresc:'delta', cliQueda:'delta', prodCresc:'delta', prodQueda:'delta' };
+if (!S._homeSort) S._homeSort = { cliCresc:'impacto', cliQueda:'impacto', prodCresc:'impacto', prodQueda:'impacto' };
 
 function setHomeSort(secao, modo) {
   S._homeSort[secao] = modo;
@@ -58,11 +58,28 @@ function _sortBtns(secao, opcoes) {
   ).join('')}</div>`;
 }
 
-function _sortArr(arr, secao) {
-  const modo = S._homeSort[secao] || 'delta';
-  if (modo === 'valor') return [...arr].sort((a, b) => b.cur - a.cur);
-  if (modo === 'qtd')   return [...arr].sort((a, b) => (b.qtd||0) - (a.qtd||0));
-  return [...arr]; // delta — já vem ordenado
+// filtra por direção (alta/queda), ordena pelo modo escolhido e corta o top 10.
+// impacto = diferença em R$ entre Últ.30D e a média mensal — é o que de fato move o faturamento total.
+function _rankTrend(arr, dir, modo) {
+  const f = arr.filter(x => dir === 'up' ? x.delta > 0 : x.delta < 0);
+  const imp = x => x.cur - x.prev;
+  if (modo === 'valor')      f.sort((a, b) => b.cur - a.cur);
+  else if (modo === 'qtd')   f.sort((a, b) => (b.qtd || 0) - (a.qtd || 0));
+  else if (modo === 'delta') f.sort((a, b) => dir === 'up' ? b.delta - a.delta : a.delta - b.delta);
+  else                       f.sort((a, b) => dir === 'up' ? imp(b) - imp(a) : imp(a) - imp(b)); // impacto R$
+  return f.slice(0, 10);
+}
+
+// célula de impacto: Δ R$ (o que somou/tirou do faturamento) com a variação % logo abaixo
+function _impCell(cur, prev, delta) {
+  const d = cur - prev;
+  const cls = d >= 0 ? 'delta-pos' : 'delta-neg';
+  const sign = d >= 0 ? '+' : '-';
+  const pct = delta > 900 ? 'Novo' : fmtPct(delta);
+  return `<div style="text-align:right;line-height:1.15">
+    <div class="${cls}" style="font-size:11px">${sign}${fmtK(Math.abs(d))}</div>
+    <div class="${cls}" style="font-size:9px;opacity:.8">${pct}</div>
+  </div>`;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -72,7 +89,7 @@ function renderHome() {
   const el = document.getElementById('home-body');
   if (!el) return;
   if (!S.topPeriod) S.topPeriod = '1m';
-  if (!S._homeSort) S._homeSort = { cliCresc:'delta', cliQueda:'delta', prodCresc:'delta', prodQueda:'delta' };
+  if (!S._homeSort) S._homeSort = { cliCresc:'impacto', cliQueda:'impacto', prodCresc:'impacto', prodQueda:'impacto' };
 
   const d = S.docs;
   const itens = S.itens || [];
@@ -225,30 +242,28 @@ function renderHome() {
     cliDeltas.push({ nome: _cliNome(id), cur, prev: media, delta });
   });
 
-  const crescCliRaw = [...cliDeltas].filter(c => c.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const quedaCliRaw = [...cliDeltas].filter(c => c.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
-  const crescCli = _sortArr(crescCliRaw, 'cliCresc');
-  const quedaCli = _sortArr(quedaCliRaw, 'cliQueda');
+  const crescCli = _rankTrend(cliDeltas, 'up',   S._homeSort.cliCresc);
+  const quedaCli = _rankTrend(cliDeltas, 'down', S._homeSort.cliQueda);
 
   function _cliRow(c) {
-    return `<div style="display:grid;grid-template-columns:1fr 58px 58px 54px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
-      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(c.nome)}">${escH(_truncate(c.nome, 28))}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 52px 52px 66px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(c.nome)}">${escH(_truncate(c.nome, 26))}</span>
       <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${c.prev ? fmtK(c.prev) : '—'}</span>
       <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${c.cur ? fmtK(c.cur) : 'R$0'}</span>
-      <span style="text-align:right">${_trendPill(c.delta)}</span>
+      ${_impCell(c.cur, c.prev, c.delta)}
     </div>`;
   }
 
   function _cliHeader() {
-    return `<div style="display:grid;grid-template-columns:1fr 58px 58px 54px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
+    return `<div style="display:grid;grid-template-columns:1fr 52px 52px 66px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
       <span>Cliente</span>
       <span style="text-align:right">Média 3M</span>
       <span style="text-align:right">Últ. 30D</span>
-      <span style="text-align:right">Var.</span>
+      <span style="text-align:right">Δ R$</span>
     </div>`;
   }
 
-  const sortOptsCli = [{v:'delta',l:'% Delta'},{v:'valor',l:'R$ Valor'}];
+  const sortOptsCli = [{v:'impacto',l:'Δ R$'},{v:'delta',l:'% Var'},{v:'valor',l:'R$ 30D'}];
 
   // ── Produtos ──
   const prodCur = new Map();
@@ -282,32 +297,30 @@ function renderHome() {
     prodDeltas.push({ nome, cur, prev: media, qtd, qtdPrev: qtdM, delta });
   });
 
-  const prodCrescRaw = [...prodDeltas].filter(p => p.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 10);
-  const prodQuedaRaw = [...prodDeltas].filter(p => p.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 10);
-  const prodCresc = _sortArr(prodCrescRaw, 'prodCresc');
-  const prodQueda = _sortArr(prodQuedaRaw, 'prodQueda');
+  const prodCresc = _rankTrend(prodDeltas, 'up',   S._homeSort.prodCresc);
+  const prodQueda = _rankTrend(prodDeltas, 'down', S._homeSort.prodQueda);
 
   function _prodRow(p) {
-    return `<div style="display:grid;grid-template-columns:1fr 40px 58px 58px 54px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
-      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 30))}</span>
+    return `<div style="display:grid;grid-template-columns:1fr 36px 50px 50px 66px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escH(p.nome)}">${escH(_truncate(p.nome, 26))}</span>
       <span style="text-align:right;color:var(--text-muted);font-size:10px">${p.qtd ? Math.round(p.qtd) : '—'}</span>
       <span style="text-align:right;color:var(--text-muted);font-family:'DM Mono',monospace;font-size:10px">${p.prev ? fmtK(p.prev) : '—'}</span>
       <span style="text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-primary);font-size:10px">${p.cur ? fmtK(p.cur) : 'R$0'}</span>
-      <span style="text-align:right">${_trendPill(p.delta)}</span>
+      ${_impCell(p.cur, p.prev, p.delta)}
     </div>`;
   }
 
   function _prodHeader() {
-    return `<div style="display:grid;grid-template-columns:1fr 40px 58px 58px 54px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
+    return `<div style="display:grid;grid-template-columns:1fr 36px 50px 50px 66px;gap:6px;padding:4px 0;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">
       <span>Produto</span>
       <span style="text-align:right">Qtd</span>
       <span style="text-align:right">Média 3M</span>
       <span style="text-align:right">Últ. 30D</span>
-      <span style="text-align:right">Var.</span>
+      <span style="text-align:right">Δ R$</span>
     </div>`;
   }
 
-  const sortOptsProd = [{v:'delta',l:'% Delta'},{v:'valor',l:'R$ Valor'},{v:'qtd',l:'Qtd'}];
+  const sortOptsProd = [{v:'impacto',l:'Δ R$'},{v:'delta',l:'% Var'},{v:'qtd',l:'Qtd'}];
 
   // legenda explicativa do comparativo
   const trailCapHTML = `<div class="panel-cap">Últimos 30 dias vs média mensal dos 3 meses anteriores${S.trailAnchor ? ` · base até ${fmtD(S.trailAnchor)}` : ''}</div>`;

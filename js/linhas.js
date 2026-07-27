@@ -15,6 +15,12 @@ function _linPill(delta){
   return `<span class="trend-pill ${cls}">${fmtPct(delta)}</span>`;
 }
 
+// Δ R$: diferença absoluta entre Últ.30D e média mensal (o que soma/tira do faturamento)
+function _linImp(cur,media){
+  const d=cur-media, pos=d>=0, cls=pos?'delta-pos':'delta-neg';
+  return `<span class="${cls}" style="font-family:'DM Mono',monospace;font-weight:700;font-size:11px">${pos?'+':'-'}${fmtK(Math.abs(d))}</span>`;
+}
+
 // Janelas 30d (atual) e 90d/3 (média mensal), ancoradas na última data dos dados
 function _linWindows(rows){
   const p=n=>String(n).padStart(2,'0');
@@ -108,11 +114,13 @@ function renderLinhas(){
         return {k,cur:c,media:m,delta:m>0?((c-m)/m)*100:(c>0?999:0),share:c/totCur*100};
       }).sort((a,b)=>b.cur-a.cur);
       subBreakHTML=`<div class="scard"><div class="scard-title">📦 Por Subgrupo · Últimos 30 dias</div>`+
-        arr.map(x=>`<div style="display:grid;grid-template-columns:1fr 62px 62px 56px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+        `<div style="display:grid;grid-template-columns:1fr 62px 62px 62px 56px;gap:8px;padding:4px 0 6px;border-bottom:2px solid var(--border);margin-bottom:2px;font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em"><span>Subgrupo</span><span class="r">Média 3M</span><span class="r">Últ.30D</span><span class="r">Δ R$</span><span class="r">Var.</span></div>`+
+        arr.map(x=>`<div style="display:grid;grid-template-columns:1fr 62px 62px 62px 56px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
           <div style="min-width:0"><div class="nm" style="margin-bottom:4px">${escH(_truncate(x.k,34))}</div>
             <div class="bar-track" style="height:5px"><div class="bar-fill" style="width:${Math.round(x.share)}%"></div></div></div>
           <span class="r mut mono">${x.media?fmtK(x.media):'—'}</span>
           <span class="r cur">${x.cur?fmtK(x.cur):'R$0'}</span>
+          <span class="r">${_linImp(x.cur,x.media)}</span>
           <span class="r">${_linPill(x.delta)}</span>
         </div>`).join('')+`</div>`;
     }
@@ -125,8 +133,9 @@ function renderLinhas(){
       const c=cur.get(k)||{fat:0,qtd:0}, m=(base.get(k)?.fat||0)/3;
       return {nome:k,cur:c.fat,qtd:c.qtd,media:m,delta:m>0?((c.fat-m)/m)*100:(c.fat>0?999:0)};
     });
-    const sort=S.linhaSort||'delta';
-    prods.sort((a,b)=> sort==='valor'? b.cur-a.cur : sort==='qtd'? b.qtd-a.qtd : sort==='nome'? a.nome.localeCompare(b.nome) : (b.delta===a.delta? b.cur-a.cur : b.delta-a.delta));
+    const sort=S.linhaSort||'impacto';
+    const _imp=x=>Math.abs(x.cur-x.media); // maior movimento em R$ (alta ou queda) primeiro
+    prods.sort((a,b)=> sort==='valor'? b.cur-a.cur : sort==='qtd'? b.qtd-a.qtd : sort==='nome'? a.nome.localeCompare(b.nome) : sort==='delta'? (b.delta===a.delta? b.cur-a.cur : b.delta-a.delta) : _imp(b)-_imp(a));
 
     // ── FILTROS ──
     const grpChips=`<button class="lin-chip${!g?' on':''}" onclick="setLinhaGrupo('')">Todos</button>`+
@@ -135,18 +144,20 @@ function renderLinhas(){
       subgrupos.map(s=>`<option value="${escH(s)}"${sg===s?' selected':''}>${escH(s)}</option>`).join('')+`</select>` : '';
     const janBtns=[6,12].map(nn=>`<button class="lin-chip${(S.linhaJanela||12)===nn?' on':''}" onclick="setLinhaJanela(${nn})">${nn}M</button>`).join('');
     const sortSel=`<select class="lin-select" onchange="setLinhaSort(this.value)">
-      <option value="delta"${sort==='delta'?' selected':''}>Variação</option>
+      <option value="impacto"${sort==='impacto'?' selected':''}>Δ R$ (impacto)</option>
+      <option value="delta"${sort==='delta'?' selected':''}>Variação %</option>
       <option value="valor"${sort==='valor'?' selected':''}>R$ Últ.30D</option>
       <option value="qtd"${sort==='qtd'?' selected':''}>Qtd</option>
       <option value="nome"${sort==='nome'?' selected':''}>Nome</option></select>`;
 
     const titulo = sg ? `${g} · ${sg}` : g ? g : 'Todos os produtos';
-    const tHead=`<div class="lin-trow lin-thead"><span>Produto</span><span class="r">Qtd</span><span class="r">Média 3M</span><span class="r">Últ.30D</span><span class="r">Var.</span></div>`;
+    const tHead=`<div class="lin-trow lin-thead"><span>Produto</span><span class="r">Qtd</span><span class="r">Média 3M</span><span class="r">Últ.30D</span><span class="r">Δ R$</span><span class="r">Var.</span></div>`;
     const tRows=prods.map(p=>`<div class="lin-trow">
-      <span class="nm" title="${escH(p.nome)}">${escH(_truncate(p.nome,44))}</span>
+      <span class="nm" title="${escH(p.nome)}">${escH(_truncate(p.nome,40))}</span>
       <span class="r mut">${p.qtd?Math.round(p.qtd):'—'}</span>
       <span class="r mut mono">${p.media?fmtK(p.media):'—'}</span>
       <span class="r cur">${p.cur?fmtK(p.cur):'R$0'}</span>
+      <span class="r">${_linImp(p.cur,p.media)}</span>
       <span class="r">${_linPill(p.delta)}</span></div>`).join('')
       || `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:12px">Nenhum produto na seleção.</div>`;
 

@@ -61,7 +61,7 @@ const S = {
   linhaGrupo: '',     // grupo selecionado ('' = todos)
   linhaSubgrupo: '',  // subgrupo selecionado ('' = todos)
   linhaJanela: 12,    // meses exibidos na série (6 | 12)
-  linhaSort: 'delta', // ordenação da tabela de produtos
+  linhaSort: 'impacto', // ordenação da tabela de produtos (Δ R$ = maior impacto no faturamento)
 };
 
 // ── FORMATADORES ───────────────────────────────────────────
