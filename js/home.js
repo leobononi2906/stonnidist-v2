@@ -220,7 +220,9 @@ function renderHome() {
   }
 
   // ── Clientes ── (nome resolvido pelo dimMap; a view de itens só traz id_cliente)
-  const _cliNome = id => (S.dimMap && S.dimMap.get(id)?.nome_cliente) || `Cliente #${id}`;
+  const _cliNome = id => (S.dimMap && S.dimMap.get(id)?.nome_cliente)
+    || (S.nomeCli && (S.nomeCli.get(id) || S.nomeCli.get(Number(id))))
+    || `Cliente #${id}`;
   const cliCur = new Map();
   it30.forEach(r => {
     if (!r.id_cliente) return;

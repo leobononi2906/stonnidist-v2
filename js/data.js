@@ -595,6 +595,26 @@ async function loadTrailing() {
   ]);
   S.itens30d=Array.isArray(cur)?cur:[];
   S.itensBase3m=Array.isArray(bse)?bse:[]; // total de 90 dias; dividir por 3 no render p/ média mensal
+
+  // Nomes que faltam no dimMap: clientes do ERP que faturaram mas não estão na atac_clientes
+  // (ou estão inativos/sem nome). Sem isso a Home mostra "Cliente #id". Fonte: vw_dim_cliente (tem todos).
+  try {
+    if (!S.nomeCli) S.nomeCli = new Map();
+    const falta = new Set();
+    const _chk = r => {
+      const id = r.id_cliente; if (id == null) return;
+      const d = S.dimMap && S.dimMap.get(id);
+      if ((!d || !d.nome_cliente) && !S.nomeCli.has(Number(id))) falta.add(Number(id));
+    };
+    S.itens30d.forEach(_chk); S.itensBase3m.forEach(_chk);
+    const ids = [...falta];
+    const LOTE = 200;
+    for (let i = 0; i < ids.length; i += LOTE) {
+      const lote = ids.slice(i, i + LOTE);
+      const dd = await sbQ('vw_dim_cliente', `select=id_cliente,nome_cliente&id_cliente=in.(${lote.join(',')})`);
+      (Array.isArray(dd) ? dd : []).forEach(r => S.nomeCli.set(Number(r.id_cliente), r.nome_cliente));
+    }
+  } catch (e) { console.warn('loadTrailing nomes:', e); }
 }
 
 // Itens dos últimos 12 meses para a aba Produtos (grupo/subgrupo ao longo do tempo).

@@ -54,6 +54,12 @@ async function renderVendedorTeam(el) {
   const fatTot = vl.reduce((s, v) => s + v.fat, 0);
   const maxF = Math.max(...vl.map(v => v.fat), 1);
 
+  // Total do período = todos os docs (respeita o filtro do topo) = MESMO número da Home.
+  // fatTot cobre só quem é ranqueado (distribuidor ativo); a diferença são vendedores
+  // inativos ou fora do time de distribuição (ex.: representante desligado que faturou no mês).
+  const fatPeriodo = S.docs.reduce((s, d) => s + docFat(d), 0);
+  const fatOutros = fatPeriodo - fatTot;
+
   // Saude carteira por vendedor
   const crmH = new Map();
   S.carteira.forEach(c => {
@@ -146,7 +152,7 @@ async function renderVendedorTeam(el) {
 
   el.innerHTML = `
     <div class="kgrid">
-      ${kc('\u{1F4B0}', 'Faturamento', fmtK(fatTot), 'kc-b')}
+      ${kc('\u{1F4B0}', 'Faturamento', fmtK(fatPeriodo), 'kc-b')}
       ${kc('\u{1F464}', 'Vendedores', vl.length, 'kc-p')}
       ${kc('\u{1F465}', 'Clientes', new Set(S.docs.filter(d => allowedIds.has(d.id_vendedor) && d.id_cliente).map(d => _cardKey(d.id_cliente))).size, 'kc-g')}
       ${kc('\u{1F6D2}', 'Pedidos', new Set(S.docs.filter(d => allowedIds.has(d.id_vendedor)).map(d => d.id_doc).filter(Boolean)).size, 'kc-y')}
@@ -241,6 +247,13 @@ async function renderVendedorTeam(el) {
               </div>`).join('') || '<div class="empty-msg">Sem pedidos no per\u00edodo</div>'}
             </div></td></tr>` : ''}`;
           }).join('')}
+          ${fatOutros > 1 ? `<tr style="color:var(--text-muted)" title="Faturamento de vendedores inativos ou fora do time de distribui\u00e7\u00e3o \u2014 entra no total da Home, mas n\u00e3o \u00e9 ranqueado aqui">
+            <td></td>
+            <td style="white-space:nowrap">Inativos / outros</td>
+            <td class="r mono" style="font-weight:600">${fmtK(fatOutros)}</td>
+            <td class="r" colspan="7" style="font-size:11px;color:var(--text-muted)">n\u00e3o ranqueado</td>
+            <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(fatOutros / maxF * 100)}%;background:var(--text-muted)"></div></div></td>
+          </tr>` : ''}
         </tbody>
       </table></div>` : '<div class="empty-msg">Sem faturamento no per\u00edodo selecionado</div>'}
     </div>`;

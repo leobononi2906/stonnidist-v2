@@ -42,6 +42,7 @@ const S = {
   expandVend: null,
   vendDrill: null,
   cardOf: new Map(), cardMembers: new Map(),
+  nomeCli: new Map(),  // fallback de nome de cliente do ERP (vw_dim_cliente) p/ ids fora da atac_clientes
   umblerOpen: true,
   // prospecção geral (sem vendedor) e vencidos (prazo expirado)
   prospGeral: [],
