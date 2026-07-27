@@ -51,6 +51,12 @@ Objetivo: medir se o vendedor **trabalha** a carteira ou só **colhe** venda gar
 - **Ritmo (sparkline)**: mini-barras de atividade por semana no período (nota + Umbler), normalizado pelo máximo global → mostra constante vs rajada. Semanas = buckets de 7 dias do período (cap 12).
 - **Fix Umbler (importante)**: contato Umbler mapeia pro vendedor por `nome_atendente = nome_vendedor_erp` (nome), **não** `usuario_umbler` (login). Corrigido no sparkline E no painel individual (KPI Contatos Umbler + atividade diária/semanal, que subcontavam). Ver memória `crm-atacado-umbler-atendente`. Achado: só ~2 vendedores registram nota; maioria da atividade é Umbler.
 
+### Comparativos: Δ R$ (impacto no faturamento) + fix de ordenação (jul/2026, v=20260726h)
+- **Insight do Leo**: nos comparativos Média 3M × Últ.30D (Home clientes/produtos e aba Produtos), o dado mais importante é a **diferença em R$** (Últ.30D − média mensal) — é isso que efetivamente sobe/desce no faturamento total. Uma queda de −50% num cliente de R$500 é ruído; −8% num de R$100k derruba o mês. A % sozinha engana.
+- **Home** (`home.js`): nova célula **Δ R$** (grande, verde/vermelha, com a % embaixo) em clientes e produtos. Ordenação padrão passou a ser **impacto** (Δ R$). Opções: Δ R$ · % Var · R$ 30D (produtos ainda têm Qtd).
+- **Fix de ordenação (bug real)**: antes o código filtrava por sinal, **cortava o Top 10 por %** e só depois reordenava — então quem tinha % baixa mas R$ alto **nunca aparecia**. Agora `_rankTrend(arr, dir, modo)` filtra → ordena pelo critério escolhido → corta 10. O Top 10 respeita o critério.
+- **Aba Produtos** (`linhas.js`): coluna **Δ R$** na tabela e no detalhe por subgrupo; opção de ordenar por **Δ R$ (impacto)** = maior movimento absoluto (alta OU queda) primeiro; virou o default (`config.js linhaSort='impacto'`).
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
