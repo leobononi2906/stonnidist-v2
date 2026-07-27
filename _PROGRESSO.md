@@ -57,6 +57,11 @@ Objetivo: medir se o vendedor **trabalha** a carteira ou só **colhe** venda gar
 - **Fix de ordenação (bug real)**: antes o código filtrava por sinal, **cortava o Top 10 por %** e só depois reordenava — então quem tinha % baixa mas R$ alto **nunca aparecia**. Agora `_rankTrend(arr, dir, modo)` filtra → ordena pelo critério escolhido → corta 10. O Top 10 respeita o critério.
 - **Aba Produtos** (`linhas.js`): coluna **Δ R$** na tabela e no detalhe por subgrupo; opção de ordenar por **Δ R$ (impacto)** = maior movimento absoluto (alta OU queda) primeiro; virou o default (`config.js linhaSort='impacto'`).
 
+### Nomes de cliente + faturamento consistente entre abas (jul/2026, v=20260726i)
+- **"Cliente #id" na Home**: a tendência usa a view de itens (só id_cliente) e resolvia nome pelo dimMap (=atac_clientes situação A), que não tem todos os clientes do ERP. `loadTrailing()` agora busca os nomes que faltam em `vw_dim_cliente` → `S.nomeCli`; `_cliNome` usa dimMap→nomeCli→"Cliente #id".
+- **Faturamento diferente entre abas**: conferido que doc-nível == item-nível (idênticos). A diferença é ESCOPO: Home = todos os docs do período; Vendedores = só distribuidor ativo; Produtos = janela global 30d/12M. Fix na aba Vendedores: KPI Faturamento passou a ser o total do período (= Home) + linha "Inativos / outros" reconciliando o ranking (caso RODRIGO DEON, representante inativo que faturou R$39k). Ver memória `crm-atacado-faturamento-por-aba`.
+- Handoff completo em `_HANDOFF.md`.
+
 ## ⏳ Próximos passos
 1. **Estender o layout novo** (pills/legendas) ao resto da Home: KPIs, Faturamento por Linha, Evolução Mensal, Top Clientes, Últimos Pedidos.
 2. Decidir se "Faturamento por Linha" (Home) também migra pro comparativo Últ.30D vs Média3M (hoje usa período selecionado).
