@@ -559,9 +559,17 @@ async function loadAtividades() {
 
 // Contatos Umbler no período
 async function loadContatos() {
-  let params=`select=telefone,nome_contato,nome_atendente,ultimo_contato&nao_comercial=eq.false&ultimo_contato=gte.${F.dtStart}&ultimo_contato=lte.${F.dtEnd}T23:59:59`;
+  // id_atendente_umbler + tags são necessários p/ atribuir o contato ao vendedor:
+  // a caixa geral "ATACADO" marca quem atende pela TAG (ex.: "GUILHERME STONNI"), não pelo campo atendente.
+  let params=`select=telefone,nome_contato,nome_atendente,id_atendente_umbler,inbox_umbler,tags,ultimo_contato&nao_comercial=eq.false&ultimo_contato=gte.${F.dtStart}&ultimo_contato=lte.${F.dtEnd}T23:59:59`;
   const d=await sbQ('atac_umbler_contatos',params);
   S.contatosUmbler=Array.isArray(d)?d:[];
+}
+
+// Mapa telefone -> id_cliente (p/ o ranking saber se um contato Umbler é de cliente da carteira)
+async function loadTelCli() {
+  const d=await sbQ('atac_cliente_telefones','select=telefone,id_cliente');
+  S.telCliMap=new Map((Array.isArray(d)?d:[]).filter(t=>t.telefone&&t.id_cliente!=null).map(t=>[t.telefone,t.id_cliente]));
 }
 
 // Análise de tendência para a Home: ÚLTIMOS 30 DIAS vs MÉDIA MENSAL DOS 3 MESES ANTERIORES.
@@ -632,5 +640,5 @@ async function loadLinhas() {
 
 // Refresh completo para Home e Vendedores (chamado por refreshDocs)
 async function refreshGestao() {
-  await Promise.all([loadItens(), loadItensPrev(), loadTrailing(), loadAtividades(), loadContatos()]);
+  await Promise.all([loadItens(), loadItensPrev(), loadTrailing(), loadAtividades(), loadContatos(), loadTelCli()]);
 }

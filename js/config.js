@@ -57,6 +57,7 @@ const S = {
   itensPrev: [],      // mesma view, período anterior (para comparativo)
   atividades: [],     // atac_crm_notas no período
   contatosUmbler: [], // atac_umbler_contatos no período
+  telCliMap: new Map(), // telefone -> id_cliente (p/ atribuir contato Umbler à carteira no ranking)
   // ── LINHAS (análise por grupo/subgrupo ao longo do tempo) ──
   linhas: [],         // vw_comercial_itens_faturados dos últimos 12 meses
   linhaGrupo: '',     // grupo selecionado ('' = todos)
