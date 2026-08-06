@@ -205,6 +205,11 @@ async function renderVendedorTeam(el) {
       return `<div style="width:6px;height:${h}px;background:${v ? 'var(--blue-mid)' : 'var(--border)'};border-radius:1px" title="Sem ${k + 1}: ${v}"></div>`;
     }).join('')}</div>`;
   };
+  // Mini-barra horizontal (cobertura / venda ativa): percentual + cor relativa a media
+  const _miniBar = (pct, color) => {
+    const w = Math.max(0, Math.min(100, Math.round(pct || 0)));
+    return `<div style="height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;width:80px;flex-shrink:0"><div style="height:100%;width:${w}%;background:${color}"></div></div>`;
+  };
 
   el.innerHTML = `
     <div class="kgrid">
@@ -231,37 +236,23 @@ async function renderVendedorTeam(el) {
       <div class="scard-title">\u{1F4CA} Ranking de Vendedores</div>
       ${vl.length ? `<div style="overflow-x:auto"><table class="data-table">
         <thead><tr>
-          <th style="width:30px">#</th>
           <th>Vendedor</th>
-          <th class="r">Faturamento</th>
-          <th class="r" title="% da carteira que ELE atendeu no per\u00edodo (nota ou Umbler atribu\u00eddo a ele)">Cobertura</th>
-          <th class="r" title="Clientes DA CARTEIRA que ELE atendeu no per\u00edodo (nota ou Umbler atribu\u00eddo a ele)">Falados</th>
-          <th class="r" title="Volume total de atendimentos no per\u00edodo (nota + Umbler atribu\u00eddo a ele), incluindo leads novos fora da carteira">Atendimentos</th>
-          <th class="r" title="Clientes da carteira que ele atendeu mas que ainda N\u00c3O compraram no per\u00edodo \u2014 trabalho em aberto (esfor\u00e7o, n\u00e3o colheita)">Em aberto</th>
+          <th class="r" title="Faturamento no per\u00edodo \u00b7 ticket m\u00e9dio embaixo">Vendeu</th>
+          <th title="% da carteira dele que ele atendeu no per\u00edodo (nota ou Umbler) \u00b7 n\u00famero de clientes embaixo">Carteira trabalhada</th>
+          <th class="r" title="Volume total de atendimentos no per\u00edodo (nota + Umbler), incluindo leads novos fora da carteira">Atendimentos</th>
+          <th title="% da carteira que ainda compra (venda ativa) \u00b7 faturamento parado embaixo">Sa\u00fade da carteira</th>
           <th class="r" title="Atividades por semana no per\u00edodo (nota + Umbler) \u2014 constante vs em rajada">Ritmo</th>
-          <th class="r" title="% das vendas geradas por contato (n\u00e3o passivas)">Venda ativa</th>
-          <th class="r" title="Faturamento hist\u00f3rico da carteira sem contato nem compra no per\u00edodo">Parada</th>
-          <th class="r">Ticket M\u00e9dio</th>
-          <th style="width:130px;min-width:90px"></th>
         </tr></thead>
         <tbody>
           <tr style="background:var(--surface2)">
-            <td></td>
-            <td style="font-weight:700;color:var(--text-secondary);white-space:nowrap">\u{1F4CF} Média da equipe</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.fat)}</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.cob}%</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.falados)}</td>
+            <td style="font-weight:700;color:var(--text-secondary);white-space:nowrap">\u{1F4CF} M\u00e9dia da equipe</td>
+            <td class="r"><div class="mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.fat)}</div><div style="font-size:11px;color:var(--text-muted)">tkt ${fmtK(avg.ticket)}</div></td>
+            <td><div class="mono" style="font-weight:700;color:var(--text-secondary)">${avg.cob}%</div><div style="font-size:11px;color:var(--text-muted)">${Math.round(avg.falados)} clientes</div></td>
             <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.atend)}</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${Math.round(avg.prospec)}</td>
+            <td><div class="mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</div><div style="font-size:11px;color:var(--text-muted)">${fmtK(avg.parada)} parada</div></td>
             <td class="r" style="font-size:10px;color:var(--text-muted);text-align:right">${nWeeks} sem</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.parada)}</td>
-            <td class="r mono" style="font-weight:700;color:var(--text-secondary)">${fmtK(avg.ticket)}</td>
-            <td></td>
           </tr>
           ${vl.map((v, i) => {
-            const h = crmH.get(v.id) || { a: 0, t: 0, r: 0 };
-            const exp = S.expandVend === v.id;
             const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : '';
             const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
             const cob = e.cart ? Math.round(e.falados / e.cart * 100) : 0;
@@ -269,50 +260,27 @@ async function renderVendedorTeam(el) {
             const pAtiva = compV ? Math.round(e.ativa / compV * 100) : 0;
             const falados = e.falados;
             const atend = _atendCount(v.id);
-            const prospec = Math.max(0, e.falados - e.ativa);
-
-            // Top 5 clientes deste vendedor
-            const tc = new Map();
-            S.docs.filter(d => d.id_vendedor === v.id).forEach(d => {
-              if (!d.id_cliente) return;
-              if (!tc.has(d.id_cliente)) tc.set(d.id_cliente, { nome: d.nome_cliente, fat: 0 });
-              tc.get(d.id_cliente).fat += docFat(d);
-            });
-            const tcArr = [...tc.values()].sort((a, b) => b.fat - a.fat).slice(0, 5);
-
+            const cobColor = _relColor(cob, avg.cob, true);
+            const ativaColor = compV ? _relColor(pAtiva, avg.ativa, true) : 'var(--text-muted)';
             return `<tr class="cl" onclick="openVend(${v.id})" title="Ver detalhe">
-              <td style="text-align:center;font-size:11px;color:var(--text-muted);font-weight:700">${i + 1}</td>
-              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} ${medal} <span style="color:var(--text-muted);font-weight:400">\u203A</span></td>
-              <td class="r mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</td>
-              <td class="r mono" style="color:${_relColor(cob, avg.cob, true)};font-weight:700">${cob}%</td>
-              <td class="r mono" style="color:${_relColor(falados, avg.falados, true)};font-weight:600">${falados}</td>
-              <td class="r mono" style="color:${_relColor(atend, avg.atend, true)};font-weight:600">${atend}</td>
-              <td class="r mono" style="color:${_relColor(prospec, avg.prospec, true)};font-weight:700">${prospec}</td>
+              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${i + 1}. ${sN(v.nome)} ${medal} <span style="color:var(--text-muted);font-weight:400">\u203A</span></td>
+              <td class="r"><div class="mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</div><div style="font-size:11px;color:var(--text-muted)">tkt ${fmtK(v.ticket)}</div></td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">${_miniBar(cob, cobColor)}<span class="mono" style="font-weight:700;color:${cobColor}">${cob}%</span></div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${falados} clientes</div>
+              </td>
+              <td class="r mono" style="color:${_relColor(atend, avg.atend, true)};font-weight:600">${atend}<div style="font-size:11px;color:var(--text-muted);font-weight:400">a\u00e7\u00f5es</div></td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">${_miniBar(compV?pAtiva:0, ativaColor)}<span class="mono" style="font-weight:700;color:${ativaColor}">${compV?pAtiva+'%':'\u2014'}</span></div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${e.fatParada>0?fmtK(e.fatParada)+' parada':'sem parada'}</div>
+              </td>
               <td class="r">${_sparkline(v.id)}</td>
-              <td class="r mono" style="color:${compV?_relColor(pAtiva, avg.ativa, true):'var(--text-muted)'};font-weight:600">${compV?pAtiva+'%':'—'}</td>
-              <td class="r mono" style="color:${e.fatParada>0?_relColor(e.fatParada, avg.parada, false):'var(--text-muted)'};font-weight:600">${e.fatParada>0?fmtK(e.fatParada):'—'}</td>
-              <td class="r mono" style="color:${_relColor(v.ticket, avg.ticket, true)}">${fmtK(v.ticket)}</td>
-              <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(v.fat / maxF * 100)}%"></div></div></td>
-            </tr>
-            ${exp ? `<tr class="expand-row"><td colspan="12"><div class="expand-inner">
-              <div class="hgrid">
-                <div class="hbox ha"><div class="n">${h.a}</div><div class="l">Ativos</div></div>
-                <div class="hbox ht"><div class="n">${h.t}</div><div class="l">Aten\u00e7\u00e3o</div></div>
-                <div class="hbox hr"><div class="n">${h.r}</div><div class="l">Em Risco</div></div>
-              </div>
-              <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Top 5 Clientes no Per\u00edodo</div>
-              ${tcArr.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)">
-                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)">${sN(c.nome)}</span>
-                <span class="mono" style="color:var(--text-secondary);flex-shrink:0;margin-left:8px;font-weight:600">${fmtK(c.fat)}</span>
-              </div>`).join('') || '<div class="empty-msg">Sem pedidos no per\u00edodo</div>'}
-            </div></td></tr>` : ''}`;
+            </tr>`;
           }).join('')}
           ${fatOutros > 1 ? `<tr style="color:var(--text-muted)" title="Faturamento de vendedores inativos ou fora do time de distribui\u00e7\u00e3o \u2014 entra no total da Home, mas n\u00e3o \u00e9 ranqueado aqui">
-            <td></td>
             <td style="white-space:nowrap">Inativos / outros</td>
             <td class="r mono" style="font-weight:600">${fmtK(fatOutros)}</td>
-            <td class="r" colspan="8" style="font-size:11px;color:var(--text-muted)">n\u00e3o ranqueado</td>
-            <td><div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${Math.round(fatOutros / maxF * 100)}%;background:var(--text-muted)"></div></div></td>
+            <td colspan="4" style="font-size:11px;color:var(--text-muted)">n\u00e3o ranqueado</td>
           </tr>` : ''}
         </tbody>
       </table></div>` : '<div class="empty-msg">Sem faturamento no per\u00edodo selecionado</div>'}
