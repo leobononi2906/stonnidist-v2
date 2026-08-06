@@ -95,7 +95,17 @@ async function renderVendedorTeam(el) {
     .map(v => ({ ...v, clientes: v.cli.size, pedidos: v.ped.size, ticket: v.ped.size ? v.fat / v.ped.size : 0 }))
     .sort((a, b) => b.fat - a.fat);
 
+  // Representantes (DISTRIBUICAO REPRESENTANTES) vendem mas nao trabalham a carteira
+  // no CRM. Ficam numa secao separada, sem metricas de carteira, e nao entram nas
+  // medias do time interno (senao puxam a cobertura pra baixo). Ex.: RACA (48746).
+  const repIds = new Set(S.vendedores
+    .filter(v => (v.departamento || '').trim().toUpperCase() === 'DISTRIBUICAO REPRESENTANTES')
+    .map(v => v.id_vendedor));
+  const vlInt = vl.filter(v => !repIds.has(v.id));
+  const vlRep = vl.filter(v => repIds.has(v.id));
+
   const fatTot = vl.reduce((s, v) => s + v.fat, 0);
+  const fatTotInt = vlInt.reduce((s, v) => s + v.fat, 0);
   const maxF = Math.max(...vl.map(v => v.fat), 1);
 
   // Total do período = todos os docs (respeita o filtro do topo) = MESMO número da Home.
@@ -154,7 +164,7 @@ async function renderVendedorTeam(el) {
   // Médias do time (a "régua" de comparação)
   const _mCob = [], _mAtiva = [];
   let _sumParada = 0, _sumTicket = 0, _sumFal = 0, _sumProsp = 0, _cntParadaCli = 0, _sumAtend = 0;
-  vl.forEach(v => {
+  vlInt.forEach(v => {
     const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
     _mCob.push(e.cart ? e.falados / e.cart * 100 : 0);
     const cv = e.ativa + e.passiva;
@@ -164,9 +174,9 @@ async function renderVendedorTeam(el) {
     _sumTicket += v.ticket;
     _sumAtend += _atendCount(v.id);
   });
-  const nV = vl.length || 1;
+  const nV = vlInt.length || 1;
   const avg = {
-    fat:      fatTot / nV,
+    fat:      fatTotInt / nV,
     cob:      Math.round(_mCob.reduce((s, x) => s + x, 0) / nV),
     ativa:    _mAtiva.length ? Math.round(_mAtiva.reduce((s, x) => s + x, 0) / _mAtiva.length) : 0,
     parada:   _sumParada / nV,
@@ -252,7 +262,7 @@ async function renderVendedorTeam(el) {
             <td><div class="mono" style="font-weight:700;color:var(--text-secondary)">${avg.ativa}%</div><div style="font-size:11px;color:var(--text-muted)">${fmtK(avg.parada)} parada</div></td>
             <td class="r" style="font-size:10px;color:var(--text-muted);text-align:right">${nWeeks} sem</td>
           </tr>
-          ${vl.map((v, i) => {
+          ${vlInt.map((v, i) => {
             const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : i === 2 ? '\u{1F949}' : '';
             const e = esforco.get(v.id) || { cart:0, falados:0, ativa:0, passiva:0, parada:0, fatParada:0 };
             const cob = e.cart ? Math.round(e.falados / e.cart * 100) : 0;
@@ -277,6 +287,15 @@ async function renderVendedorTeam(el) {
               <td class="r">${_sparkline(v.id)}</td>
             </tr>`;
           }).join('')}
+          ${vlRep.length ? `<tr style="background:var(--surface2)"><td colspan="6" style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;padding-top:12px">Representantes \u2014 vendem, sem carteira no CRM</td></tr>
+          ${vlRep.map(v => `<tr class="cl" onclick="openVend(${v.id})" title="Ver detalhe">
+              <td style="font-weight:600;color:var(--text-primary);white-space:nowrap">${sN(v.nome)} <span style="color:var(--text-muted);font-weight:400">\u203a</span></td>
+              <td class="r"><div class="mono" style="font-weight:700;color:var(--text-primary)">${fmtK(v.fat)}</div><div style="font-size:11px;color:var(--text-muted)">tkt ${fmtK(v.ticket)}</div></td>
+              <td style="text-align:center;color:var(--text-muted)">\u2014</td>
+              <td class="r mono" style="color:var(--text-muted)">\u2014</td>
+              <td style="text-align:center;color:var(--text-muted)">\u2014</td>
+              <td class="r" style="color:var(--text-muted)">\u2014</td>
+            </tr>`).join('')}` : ''}
           ${fatOutros > 1 ? `<tr style="color:var(--text-muted)" title="Faturamento de vendedores inativos ou fora do time de distribui\u00e7\u00e3o \u2014 entra no total da Home, mas n\u00e3o \u00e9 ranqueado aqui">
             <td style="white-space:nowrap">Inativos / outros</td>
             <td class="r mono" style="font-weight:600">${fmtK(fatOutros)}</td>
