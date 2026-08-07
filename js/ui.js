@@ -21,11 +21,11 @@ function gotoTab(tab) {
   S.tab=tab;
   if(window.setPageInfo) window.setPageInfo(tab);
   // sidebar active
-  ['home','vendedores','linhas','crm','prospeccao','agenda','config'].forEach(t=>{
+  ['home','vendedores','linhas','crm','prospeccao','agenda','config','materiais'].forEach(t=>{
     document.getElementById(`si-${t}`)?.classList.toggle('active',t===tab);
   });
   // páginas: pg-home, pg-vendedores, pg-linhas, pg-crm (usa pg-crm.active), pg-config
-  ['home','vendedores','linhas','config','agenda'].forEach(t=>{
+  ['home','vendedores','linhas','config','agenda','materiais'].forEach(t=>{
     const el=document.getElementById(`pg-${t}`);
     if(el){ el.classList.toggle('active',t===tab); }
   });
@@ -37,8 +37,8 @@ function gotoTab(tab) {
   else if(tab==='crm' && S.mainTab==='prospeccao') setMainTab('carteira');
   // Filtros: no CRM só vendedor; config oculta tudo; resto mostra tudo
   const tf = document.getElementById('topbar-filters');
-  if (tab === 'config' || tab === 'linhas') {
-    // Produtos é análise global com subfiltros próprios — não usa o filtro master
+  if (tab === 'config' || tab === 'linhas' || tab === 'materiais') {
+    // Produtos/Materiais têm conteúdo próprio — não usam o filtro master do topo
     if(tf) tf.style.display = 'none';
   } else if (tab === 'crm' || tab === 'prospeccao') {
     if(tf) tf.style.display = 'flex';
@@ -81,7 +81,8 @@ function gotoTab(tab) {
   }
   if(tab==='crm')renderCRM();
   if(tab==='config')renderConfig();
-  
+  if(tab==='materiais' && window.renderMateriais)renderMateriais();
+
 }
 
 function setMainTab(tab){

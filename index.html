@@ -73,6 +73,9 @@
         <span class="nav-icon">⛏️</span> Prospecção
         <span id="prosp-cnt" class="nav-badge hidden" style="background:#0077CC">0</span>
       </div>
+      <div class="nav-item" id="si-materiais" onclick="gotoTab('materiais')">
+        <span class="nav-icon">📚</span> Materiais
+      </div>
       <div class="nav-separator"></div>
       <div class="nav-item" id="si-config" onclick="gotoTab('config')">
         <span class="nav-icon">⚙️</span> Configurações
@@ -243,6 +246,11 @@
 
       <!-- CONFIG -->
       <div id="pg-config" class="pg"><div id="cfg-body"></div></div>
+
+      <!-- MATERIAIS -->
+      <div id="pg-materiais" class="pg"><div id="materiais-body">
+        <div class="empty-msg"><div class="spinner" style="margin:0 auto 12px"></div>Carregando...</div>
+      </div></div>
 
     </div><!-- content-area -->
   </div><!-- main-area -->
@@ -493,6 +501,7 @@ const PAGINAS = {
   crm:        { title:'CRM',           breadcrumb:'Stonni Atacado · CRM · Carteira' },
   prospeccao: { title:'Prospecção',   breadcrumb:'Stonni Atacado · Prospecção · balcão de garimpo' },
   config:     { title:'Configurações', breadcrumb:'Stonni Atacado · Configurações' },
+  materiais:  { title:'Materiais',      breadcrumb:'Stonni Atacado · Materiais & IA' },
 };
 
 function setPageInfo(tab) {
@@ -598,6 +607,7 @@ window.hideLoading = hideLoading;
 <script src="js/agenda.js?v=20260727a"></script>
 <script src="js/config-page.js?v=20260727a"></script>
 <script src="js/exports.js?v=20260727a"></script>
+<script src="js/materiais.js?v=20260807a"></script>
 
 <!-- MODAL EDITAR VÍNCULO ERP -->
 <div id="modal-edit-vinc-erp" class="modal-ov">
